@@ -1,0 +1,183 @@
+%{
+    #include <iostream>
+    #include "hw3_output.hpp"
+    #include "class_defs.hpp"
+    using namespace output;
+
+    extern int yylex();
+    extern char *yytext;
+    extern vector<Table> tables_stack;
+    extern vector<int> offsets_stack;
+    void yyerror(const char* error_message);
+    void popAllStacks();
+    extern int yylineno;
+    extern string g_return_type;
+    extern string g_function_name;
+    extern string g_exp_type;
+    void deleteFuncDecl();
+
+%}
+//declarations
+//nonassociative precedence rules
+%nonassoc VOID
+%nonassoc INT
+%nonassoc BYTE
+%nonassoc B
+%nonassoc BOOL
+%nonassoc OVERRIDE
+%nonassoc TRUE
+%nonassoc FALSE
+%nonassoc RETURN
+%nonassoc WHILE
+%nonassoc BREAK
+%nonassoc CONTINUE
+%nonassoc SC
+%nonassoc COMMA
+%nonassoc ID
+%nonassoc NUM
+%nonassoc STRING
+
+//left precedence rules
+%left OR
+%left AND
+%left RELOP;
+%left BINOP
+%left LPAREN
+%left RPAREN
+%left LBRACE
+%left RBRACE
+
+//right precedence rules
+%right NOT
+%right ASSIGN
+%right IF
+%right ELSE
+
+%%
+//rules
+
+Program:     init_global_scope Funcs       //rule 1
+
+init_global_scope:    /*epsilon*/     {initGlobalScope();}
+
+NewScope:           /*epsilon*/     {newScope();}
+
+PopStacks:           /*epsilon*/     {popAllStacks();}
+
+WhileScope:          /*epsilon*/     {newWhileScope();}
+
+IsBoolExp:             /*epsilon*/     {isBool(yylineno);}
+
+Funcs:              /*epsilon*/         //rule 2
+                    | FuncDecl Funcs    //rule 3
+
+FuncDecl:           OverRide RetType ID {g_function_name = yytext;} LPAREN NewScope Formals RPAREN
+                    {$$ = new FuncDecl(dynamic_cast<RetType*>($2), $3, dynamic_cast<Formals*>($7), $1);}
+                    LBRACE Statements RBRACE {popAllStacks();} //rule 4
+
+OverRide:            /*epsilon*/ {$$ = new ASTNode("override_flag_false", yylineno);}   //rule 5 - override flag false
+                     | OVERRIDE {$$ = new ASTNode("override_flag_true", yylineno);}     //rule 6 - override flag true
+
+RetType: Type {$$ = new RetType($1);} //rule 7
+         | VOID {$$ = new RetType("VOID", yylineno);}  //rule 8
+
+Formals: /*epsilon*/ {$$ = new Formals(yylineno);}   //rule 9
+          | FormalsList {$$ = new Formals(dynamic_cast<FuncArgs*>($1));} //rule 10
+
+FormalsList: FormalDecl {$$ = new FuncArgs(dynamic_cast<Arg*>($1));} //rule 11
+             | FormalDecl COMMA FormalsList {$$ = new FuncArgs(dynamic_cast<Arg*>($1), dynamic_cast<FuncArgs*>($3));} //rule 12
+
+FormalDecl: Type ID {$$ = new Arg($1, $2);}  //rule 13
+
+Statements: Statement {$$ = $1;} //rule 14
+            | Statements Statement //rule 15
+
+Statement: OpenStatement {$$ = new Statement($1);}
+           | ClosedStatement {$$ = new Statement($1);}
+           ;
+
+OpenStatement: IF NewScope LPAREN Exp IsBoolExp RPAREN ClosedStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 23
+                | IF NewScope LPAREN Exp IsBoolExp RPAREN OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 23
+                | IF NewScope LPAREN Exp IsBoolExp RPAREN ClosedStatement PopStacks ELSE NewScope OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();}
+                | WHILE WhileScope LPAREN Exp IsBoolExp RPAREN OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 25
+
+ClosedStatement: SomeStatement {$$ = new ClosedStatement($1->line_no);}
+                  | IF NewScope LPAREN Exp IsBoolExp RPAREN ClosedStatement PopStacks ELSE NewScope ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 25
+                  | WHILE WhileScope LPAREN Exp IsBoolExp RPAREN ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 25
+
+SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement($1); popAllStacks();} //rule 16
+                   | Type ID SC {$$ = new SomeStatement($1, $2);} //rule 17
+                   | Type ID ASSIGN Exp SC {$$ = new SomeStatement($1, $2, dynamic_cast<Expression*>($4));} //rule 18
+                   | ID ASSIGN Exp SC {$$ = new SomeStatement($1->value, dynamic_cast<Expression*>($3));} //rule 19
+                   | Call SC {$$ = new SomeStatement($1);} //rule 20
+                   | RETURN SC {$$ = new SomeStatement($1);} //rule 21
+                   | RETURN Exp SC {$$ = new SomeStatement("return", dynamic_cast<Expression*>($2));} //rule 22
+                   | BREAK SC {$$ = new SomeStatement($1);} //rule 26
+                   | CONTINUE SC {$$ = new SomeStatement($1);} //rule 27
+
+Call: ID LPAREN ExpList RPAREN {$$ = new Expression($1, dynamic_cast<ExpList*>($3));} //rule 28
+      | ID LPAREN RPAREN {$$ = new Expression($1);} //rule 29
+
+ExpList: Exp {$$ = new ExpList(dynamic_cast<Expression*>($1));} //rule 30
+         | Exp COMMA ExpList {$$ = new ExpList(dynamic_cast<Expression*>($1), dynamic_cast<ExpList*>($3));} //rule 31
+
+Type: INT {$$ = $1;} //rule 32
+      | BYTE {$$ = $1;} //rule 33
+      | BOOL {$$ = $1;} //rule 34
+
+Exp: LPAREN Exp RPAREN {$$ = $2;} //rule 35
+     | Exp BINOP Exp {$$ = new Expression($2, "int", "binop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 36
+     | ID {$$ = new Expression($1, "id"); } //rule 37
+     | Call {$$ = $1;} //rule 38 TODO: CHECK!!!
+     | NUM {$$ = new Expression($1, "int");} //rule 39
+     | NUM B {$$ = new Expression($1, "byte");} //rule 40
+     | STRING {$$ = new Expression($1, "string");} //rule 41
+     | TRUE {$$ = new Expression($1, "bool");} //rule 42
+     | FALSE {$$ = new Expression($1, "bool");} //rule 43
+     | NOT Exp {$$ = new Expression($1, "not", dynamic_cast<Expression*>($2));} //rule 44
+     | Exp AND Exp {$$ = new Expression($2, "bool", "and", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 45
+     | Exp OR Exp {$$ = new Expression($2, "bool", "or", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 46
+     | Exp RELOP Exp {$$ = new Expression($2, "bool", "relop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 47
+     | LPAREN Type RPAREN Exp {$$ = new Expression($2, "cast", dynamic_cast<Expression*>($4));} //rule 48
+
+%%
+
+
+void deleteFuncDecl(){
+    for (TableEntry& entry : tables_stack[0].table_entries_vec) {
+        if (entry.name == "print" || entry.name == "printi"){ //FuncDecl dynamically allocated
+            // std::cout<<"DEBUG inside deletefuncdecl: " << entry.type.func_decl <<std::endl;
+            delete entry.type.func_decl;
+
+
+        }
+    }
+}
+
+void popAllStacks(){
+    printScopesSymbols();
+  //  std::cout<<"DEBUG popping scope"<<std::endl;
+    if (tables_stack.size() == 1){ //only global scope is left
+        deleteFuncDecl();
+    }
+    tables_stack.pop_back();
+    offsets_stack.pop_back();
+}
+
+void yyerror(const char*){
+    errorSyn(yylineno);
+    exit(0);
+}
+
+
+int main() {
+    #ifdef YYDEBUG
+    //  yydebug = 1;
+    #endif
+    int res = yyparse();
+    // std::cout<<"DEBUG res = " << res << std::endl;
+    validateMain();
+    popAllStacks();
+    // std::cout<<"DEBUG before ret"<<std::endl;
+    return res;
+}
