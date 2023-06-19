@@ -188,6 +188,26 @@ public:
     int offset = 0;
 };
 
+/* Register allocation code */
+class RegisterManager
+{
+private:
+    RegisterManager() : next_reg(0), next_label(0) {}
+    RegisterManager(RegisterManager const&);
+    int next_reg;
+    int next_label;
+public:
+    static RegisterManager &registerAlloc() {
+        static RegisterManager register_alloc;
+        return register_alloc;
+    }
+    string getNewRegister(){
+        return "%reg_" + to_string(next_reg++);
+    }
+    string getNewLabel(){
+        return "@lbl_" + to_string(next_label++);
+    }
+};
 
 
 /*
