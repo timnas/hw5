@@ -1,8 +1,8 @@
 %{
     #include <iostream>
-    #include "hw3_output.hpp"
+//    #include "hw3_output.hpp"
     #include "class_defs.hpp"
-    #include "bp.hpp"
+//    #include "bp.hpp"
     using namespace output;
 
     extern int yylex();
@@ -77,8 +77,8 @@ Funcs:              /*epsilon*/         //rule 2
                     | FuncDecl Funcs    //rule 3
 
 FuncDecl:           OverRide RetType ID {g_function_name = yytext;} LPAREN NewScope Formals RPAREN
-                    {$$ = new FuncDecl(dynamic_cast<RetType*>($2), $3, dynamic_cast<Formals*>($7), $1);}
-                    LBRACE Statements RBRACE {dynamic_cast<FuncDecl*>($9)->funcDeclPrint(); CodeBuffer &buffer = CodeBuffer::instance(); buffer.emit("}"); popAllStacks();} //rule 4
+                    {$$ = new FuncDecl(dynamic_cast<RetType*>($2), $3, dynamic_cast<Formals*>($7), $1); }
+                    LBRACE Statements RBRACE {dynamic_cast<FuncDecl*>($9)->endFunc(dynamic_cast<Statements*>($11)); popAllStacks();} //rule 4
 
 OverRide:            /*epsilon*/ {$$ = new ASTNode("override_flag_false", yylineno);}   //rule 5 - override flag false
                      | OVERRIDE {$$ = new ASTNode("override_flag_true", yylineno);}     //rule 6 - override flag true
@@ -95,19 +95,19 @@ FormalsList: FormalDecl {$$ = new FuncArgs(dynamic_cast<Arg*>($1));} //rule 11
 FormalDecl: Type ID {$$ = new Arg($1, $2);}  //rule 13
 
 Statements: Statement {$$ = new Statements(dynamic_cast<Statement*>($1));} //rule 14
-            | Statements LabelM Statement {$$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<LabelM*>($2), dynamic_cast<Statement*>($3));}//rule 15
+            | Statements LabelM Statement {std::cout<<"HERE1"<<std::endl; $$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<LabelM*>($2), dynamic_cast<Statement*>($3)); std::cout<<"HERE2"<<std::endl;}//rule 15
 
-Statement: OpenStatement {$$ = new Statement($1);}
-           | ClosedStatement {$$ = new Statement($1);}
+Statement: OpenStatement {std::cout<<"before 100"<<std::endl; $$ = new Statement($1); std::cout<<"after 100"<<std::endl;}
+           | ClosedStatement {std::cout<<"before 101"<<std::endl; $$ = new Statement($1); std::cout<<"after 101"<<std::endl;}
            ;
-
-OpenStatement: IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8); popAllStacks();} //rule 23
+OpenStatement: IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement {std::cout<<"before 104"<<std::endl; $$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8); std::cout<<"after 104"<<std::endl; popAllStacks();} //rule 23
                 | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8); popAllStacks();} //rule 23
                 | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope LabelM OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();}
-                | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($5), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8) $9); popAllStacks();} //rule 25
+                | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($5), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
 
 ClosedStatement: SomeStatement {$$ = new ClosedStatement(dynamic_cast<SomeStatement*>($1));}
-                  | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();} //rule 25
+                  | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope LabelM ClosedStatement
+                   {std::cout<<"before 110"<<std::endl; $$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); std::cout<<"after 110"<<std::endl; popAllStacks();} //rule 25
                   | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
 
 SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement($1); popAllStacks();} //rule 16

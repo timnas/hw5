@@ -11,6 +11,8 @@ using namespace std;
 
 class ASTNode;
 #define YYSTYPE ASTNode*
+class LabelM;
+class ExitM;
 class FuncDecl;
 class OverRide;
 class RetType;
@@ -20,8 +22,6 @@ class Arg;
 class FuncArgs;
 class Expression;
 class ExpList;
-class LabelM;
-class ExitM;
 class Statements;
 class Statement;
 class OpenStatement;
@@ -55,7 +55,7 @@ public:
     FuncDecl(RetType *ret_type, ASTNode *node, Formals *func_args, ASTNode *is_override);
     FuncDecl(int line_no, string ret_type_str, bool is_override, int num_args, vector<string> *arg_types);
     void emit(ASTNode *node);
-
+    void endFunc(Statements *statements);
 };
 
 //class Override : public FuncDecl {
@@ -159,7 +159,11 @@ class ClosedStatement : public ASTNode
 {
 public:
     ClosedStatement(Expression *expression);
+    ClosedStatement(SomeStatement* statement);
     ClosedStatement(int line_no);
+    ClosedStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2);
+    ClosedStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node);
+
 };
 
 class SomeStatement : public ASTNode
@@ -170,6 +174,22 @@ public:
     SomeStatement(string str, Expression *expression);           // 17, 20
     SomeStatement(ASTNode *node);                            // (14, 18,19,24,25)
 };
+
+/* Markers */
+class LabelM : public ASTNode{
+public:
+    LabelM();
+   // ~LabelM();
+    string label;
+};
+
+class ExitM : public ASTNode{
+public:
+    ExitM();
+ //   ~ExitM();
+    vector<pair<int, BranchLabelIndex>> nextlist;
+};
+
 
 /* TABLE, TABLE TYPE AND TABLE ENTRY
  * These classes are used to represent symbol table entries in the syntactic analyzer.
@@ -231,21 +251,6 @@ public:
     string getNewString(){
         return "@.str_" + to_string(next_string++);
     }
-};
-
-/* Markers */
-class LabelM : public ASTNode{
-    public:
-        LabelM();
-        ~LabelM();
-        string label;
-};
-
-class ExitM : public ASTNode{
-    public:
-        ExitM();
-        ~ExitM();
-        vector<pair<int, BranchLabelIndex>> nextlist;
 };
 
 

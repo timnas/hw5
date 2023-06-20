@@ -1,6 +1,6 @@
 #include "class_defs.hpp"
 #include <iostream>
-#include "bp.hpp"
+//#include "bp.hpp"
 using namespace std;
 
 string g_return_type;
@@ -95,7 +95,7 @@ string LLVMGetType (string type){
     else if (type == "void" || type == "VOID"){
         return "void";
     }
-    else{
+    else {
         return "";
     }
 }
@@ -119,6 +119,19 @@ void FuncDecl::emit(ASTNode *node) {
     buffer.emit(func_alloca_reg + " = alloca [50 x i32]");
 }
 
+void FuncDecl::endFunc(Statements *statements){
+    CodeBuffer &buffer = CodeBuffer::instance();
+    string ret_type = LLVMGetType(this->ret_type_str);
+    string end_label = buffer.genLabel();
+    buffer.bpatch((statements->nextlist), end_label);
+    if (ret_type != "void"){
+        buffer.emit("ret " + ret_type + " 0");
+    }
+    else{
+        buffer.emit("ret " + ret_type);
+    }
+    buffer.emit("}");
+}
 
 /* RetType Implementation */
 
@@ -436,7 +449,7 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, ASTNode* 
     CodeBuffer &buffer = CodeBuffer::instance();
     buffer.bpatch(expression->truelist, label_m1->label);
     buffer.bpatch(expression->falselist, label_m2->label);
-    nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist)
+    nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist);
     continuelist = buffer.merge(node1->continuelist, node2->continuelist);
     breaklist = buffer.merge(node1->breaklist, node2->breaklist);
     //TODO
@@ -464,25 +477,32 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* l
 ClosedStatement::ClosedStatement(int line_no) : ASTNode("ClosedStatement", line_no) {}
 
 ClosedStatement::ClosedStatement(SomeStatement* statement) : ASTNode("ClosedStatement", statement->line_no) {
+    std::cout<<"wrong ctor1"<<std::endl;
     nextlist = statement->nextlist;
     continuelist = statement->continuelist;
     breaklist = statement->breaklist;
 }
 
-ClosedStatement::ClosedStatement(int line_no) : ASTNode("ClosedStatement", line_no) {}
-
 ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2) : ASTNode("ClosedStatement", expression->line_no) {
+    std::cout<<"here1"<<std::endl;
     CodeBuffer &buffer = CodeBuffer::instance();
+    std::cout<<"here2"<<std::endl;
     buffer.bpatch(expression->truelist, label_m1->label);
+    std::cout<<"here3"<<std::endl;
     buffer.bpatch(expression->falselist, label_m2->label);
+    std::cout<<"here4"<<std::endl;
     nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist);
+    std::cout<<"here5"<<std::endl;
     continuelist = buffer.merge(node1->continuelist, node2->continuelist);
+    std::cout<<"here6"<<std::endl;
     breaklist = buffer.merge(node1->breaklist, node2->breaklist);
+    std::cout<<"here7"<<std::endl;
 
     //TODO ...
 }
 
 ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node) : ASTNode("ClosedStatement", expression->line_no) {
+    std::cout<<"wromg ctor2"<<std::endl;
     CodeBuffer &buffer = CodeBuffer::instance();
     buffer.bpatch(node->nextlist, label_m1->label);
     buffer.bpatch(expression->truelist, label_m2->label);
@@ -598,14 +618,15 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
 }
 
 /*Markers Implementation*/
-LabelM::LabelM() : ASTNode("Marker", 0) {
+LabelM::LabelM() : ASTNode("LabelM", -1) {
     CodeBuffer &buffer = CodeBuffer::instance();
     int print_line = buffer.emit("br label @");
     this->label = buffer.genLabel();
     buffer.bpatch(buffer.makelist(make_pair(print_line, FIRST)), this->label);
+
 }
 
-ExitM::ExitM() : ASTNode("Marker", 0){
+ExitM::ExitM() : ASTNode("ExitM", -1){
     CodeBuffer &buffer = CodeBuffer::instance();
     int print_line = buffer.emit("br label @");
     this->nextlist = buffer.makelist(make_pair(print_line, FIRST));
