@@ -3,6 +3,8 @@
 #include "hw3_output.hpp"
 #include <list>
 #include <vector>
+#include <iostream>
+#include "bp.hpp"
 using namespace std;
 
 /* classes */
@@ -18,6 +20,9 @@ class Arg;
 class FuncArgs;
 class Expression;
 class ExpList;
+class LabelM;
+class ExitM;
+class Statements;
 class Statement;
 class OpenStatement;
 class ClosedStatement;
@@ -34,6 +39,9 @@ public:
     virtual ~ASTNode() = default;
     string value;
     int line_no;
+    vector<pair<int, BranchLabelIndex>> nextlist;
+    vector<pair<int, BranchLabelIndex>> continuelist;
+    vector<pair<int, BranchLabelIndex>> breaklist;
 };
 
 class FuncDecl : public ASTNode
@@ -46,6 +54,8 @@ public:
     vector<string> arg_types;
     FuncDecl(RetType *ret_type, ASTNode *node, Formals *func_args, ASTNode *is_override);
     FuncDecl(int line_no, string ret_type_str, bool is_override, int num_args, vector<string> *arg_types);
+    void emit(ASTNode *node);
+
 };
 
 //class Override : public FuncDecl {
@@ -126,6 +136,13 @@ public:
     Statement(ASTNode *statement);
 };
 
+class Statements : public ASTNode
+{
+public:
+    Statements(Statements *statements, LabelM *label_m, Statement *statement);
+    Statements(Statement *statement);
+};
+
 class OpenStatement : public ASTNode
 {
 public:
@@ -158,9 +175,10 @@ public:
 
 class Table {
 public:
-    Table() : contains_while_loop(false) {}
+    Table() : contains_while_loop(false), scope_reg("") {}
     vector<TableEntry> table_entries_vec;
     bool contains_while_loop; // should get new value in newWhileScope func
+    string scope_reg;
 };
 
 class TableType {
@@ -192,10 +210,10 @@ public:
 class RegisterManager
 {
 private:
-    RegisterManager() : next_reg(0), next_label(0) {}
+    RegisterManager() : next_reg(0), next_string(0) {}
     RegisterManager(RegisterManager const&);
     int next_reg;
-    int next_label;
+    int next_string;
 public:
     static RegisterManager &registerAlloc() {
         static RegisterManager register_alloc;
@@ -204,9 +222,24 @@ public:
     string getNewRegister(){
         return "%reg_" + to_string(next_reg++);
     }
-    string getNewLabel(){
-        return "@lbl_" + to_string(next_label++);
+    string getNewString(){
+        return "@.str_" + to_string(next_string++);
     }
+};
+
+/* Markers */
+class LabelM : public ASTNode{
+    LabelM();
+    ~LabelM();
+
+    string label;
+};
+
+class ExitM : public ASTNode{
+    ExitM();
+    ~ExitM();
+
+    vector<pair<int, BranchLabelIndex>> nextlist;
 };
 
 
@@ -214,6 +247,7 @@ public:
  * AUXILIARIES
  */
 
+void initLLVM();
 void validateMain();
 void initGlobalScope();
 void newScope();

@@ -1,5 +1,6 @@
 #include "class_defs.hpp"
 #include <iostream>
+#include "bp.hpp"
 using namespace std;
 
 string g_return_type;
@@ -95,7 +96,52 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
     TableEntry func_entry(g_function_name, func_type, 0);
     tables_stack[0].table_entries_vec.push_back(func_entry);
 
+    emit(node);
+
 }
+
+string LLVMGetType (string type){
+    if (type == "bool" || type == "BOOL"){
+        return "i1";
+    }
+    else if (type == "int" || type == "INT"){
+        return "i32";
+    }
+    else if (type == "byte" || type == "BYTE"){
+        return "i8";
+    }
+    else if (type == "string" || type == "STRING"){
+        return "i8*";
+    }
+    else if (type == "void" || type == "VOID"){
+        return "void";
+    }
+    else{
+        return "";
+    }
+}
+
+void FuncDecl::emit(ASTNode *node) {
+    string ret_type = LLVMGetType(this->ret_type_str);
+    string parameter_list = "";
+    if (this->arg_types.size() > 0){
+        for(int i = 0; i < this->arg_types.size() - 1; i++) {
+            parameter_list += LLVMGetType(this->arg_types.at(i));
+            parameter_list += ", ";
+        }
+        parameter_list += LLVMGetType(this->arg_types.at(this->arg_types.size()-1));
+    }
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.emit("define " + ret_type + " @" + node->value + "(" + parameter_list + ") {");
+    RegisterManager &new_reg = RegisterManager::registerAlloc();
+    string func_alloca_reg = new_reg.getNewRegister();
+    Table &func_scope = tables_stack.back();
+    func_scope.scope_reg = func_alloca_reg;
+    buffer.emit(func_alloca_reg + " = alloca [50 x i32]");
+
+}
+
+
 
 
 /* OverRide Implementation */
@@ -433,7 +479,26 @@ ExpList::ExpList(Expression* expression, ExpList* list) : ASTNode(expression->va
 
 /* Statement Implementation */
 
-Statement::Statement(ASTNode* statement) : ASTNode("Statement", statement->line_no) {}
+Statement::Statement(ASTNode* statement) : ASTNode("Statement", statement->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    this->nextlist = statement->nextlist;
+    this->breaklist = statement->breaklist;
+    this->continuelist = statement->continuelist;
+    int end_of_statement = buffer.emit("br label @");
+    this->nextlist.push_back(make_pair(end_of_statement, FIRST));
+}
+
+/* Statements Implementation */
+Statements::Statements(Statement *statement) : ASTNode("Statements", statement->line_no){
+    this->nextlist = statement->nextlist;
+    this->breaklist = statement->breaklist;
+    this->continuelist = statement->continuelist;
+}
+
+Statements::Statements(Statements *statements, LabelM *label_m, Statement *statement) : ASTNode("Statements", statement->line_no){
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(statements->nextlist, label_m)
+}
 
 /* OpenStatement Implementation */
 
@@ -546,6 +611,20 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
     }
 }
 
+/*Markers Implementation*/
+LabelM::LabelM() : ASTNode("Marker", 0) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    int print_line = buffer.emit("br label @");
+    this->label = buffer.genLabel();
+    buffer.bpatch(buffer.makelist(make_pair(print_line, FIRST)), this->label);
+}
+
+ExitM::ExitM() : ASTNode("Marker", 0){
+    CodeBuffer &buffer = CodeBuffer::instance();
+    int print_line = buffer.emit("br label @");
+    this->nextlist = buffer.makelist(make_pair(print_line, FIRST));
+}
+
 
 /* Table Implementation */
 
@@ -583,6 +662,27 @@ void validateMain(){
     exit(0);
 }
 
+void initLLVM(){
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.emit("");
+    buffer.emit("declare i32 @printf(i8*, ...)");
+    buffer.emit("declare void @exit(i32)");
+    buffer.emit("@.int_specifier = constant [4 x i8] c\"%d\\0A\\00\"");
+    buffer.emit("@.str_specifier = constant [4 x i8] c\"%s\\0A\\00\"");
+    buffer.emit("define void @printi(i32) {");
+    buffer.emit("%spec_ptr = getelementptr [4 x i8], [4 x i8]* @.int_specifier, i32 0, i32 0");
+    buffer.emit("call i32 (i8*, ...) @printf(i8* %spec_ptr, i32 %0)");
+    buffer.emit("ret void");
+    buffer.emit("}");
+    buffer.emit("define void @print(i8*) {");
+    buffer.emit("%spec_ptr = getelementptr [4 x i8], [4 x i8]* @.str_specifier, i32 0, i32 0");
+    buffer.emit("call i32 (i8*, ...) @printf(i8* %spec_ptr, i8* %0)");
+    buffer.emit("ret void");
+    buffer.emit("}");
+   // buffer.emit("");
+   // buffer.emit("");
+}
+
 void initGlobalScope()
 {
  //   std::cout<< "DEBUG initGlobalScope" <<std::endl;
@@ -608,6 +708,7 @@ void newScope()
     Table t;
     t.contains_while_loop = tables_stack.back().contains_while_loop;
     tables_stack.push_back(t);
+    t.scope_reg = tables_stack.back().scope_reg;
 }
 
 void newWhileScope()
@@ -616,7 +717,7 @@ void newWhileScope()
     Table t;
     t.contains_while_loop = true;
     tables_stack.push_back(t);
-
+    t.scope_reg = tables_stack.back().scope_reg;
 }
 
 

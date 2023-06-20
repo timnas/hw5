@@ -2,6 +2,7 @@
     #include <iostream>
     #include "hw3_output.hpp"
     #include "class_defs.hpp"
+    #include "bp.hpp"
     using namespace output;
 
     extern int yylex();
@@ -68,12 +69,16 @@ WhileScope:          /*epsilon*/     {newWhileScope();}
 
 IsBoolExp:             /*epsilon*/     {isBool(yylineno);}
 
+LabelM:              /*epsilon*/         {new LabelM();}
+
+ExitM:              /*epsilon*/           {new ExitM();}
+
 Funcs:              /*epsilon*/         //rule 2
                     | FuncDecl Funcs    //rule 3
 
 FuncDecl:           OverRide RetType ID {g_function_name = yytext;} LPAREN NewScope Formals RPAREN
                     {$$ = new FuncDecl(dynamic_cast<RetType*>($2), $3, dynamic_cast<Formals*>($7), $1);}
-                    LBRACE Statements RBRACE {popAllStacks();} //rule 4
+                    LBRACE Statements RBRACE {dynamic_cast<FuncDecl*>($9)->funcDeclPrint(); CodeBuffer &buffer = CodeBuffer::instance(); buffer.emit("}"); popAllStacks();} //rule 4
 
 OverRide:            /*epsilon*/ {$$ = new ASTNode("override_flag_false", yylineno);}   //rule 5 - override flag false
                      | OVERRIDE {$$ = new ASTNode("override_flag_true", yylineno);}     //rule 6 - override flag true
@@ -155,7 +160,7 @@ void deleteFuncDecl(){
 }
 
 void popAllStacks(){
-    printScopesSymbols();
+ //   printScopesSymbols();
   //  std::cout<<"DEBUG popping scope"<<std::endl;
     if (tables_stack.size() == 1){ //only global scope is left
         deleteFuncDecl();
@@ -174,10 +179,14 @@ int main() {
     #ifdef YYDEBUG
     //  yydebug = 1;
     #endif
+    initLLVM();
     int res = yyparse();
     // std::cout<<"DEBUG res = " << res << std::endl;
     validateMain();
     popAllStacks();
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.printGlobalBuffer();
+    buffer.printCodeBuffer();
     // std::cout<<"DEBUG before ret"<<std::endl;
     return res;
 }
