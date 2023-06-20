@@ -94,21 +94,21 @@ FormalsList: FormalDecl {$$ = new FuncArgs(dynamic_cast<Arg*>($1));} //rule 11
 
 FormalDecl: Type ID {$$ = new Arg($1, $2);}  //rule 13
 
-Statements: Statement {$$ = $1;} //rule 14
-            | Statements Statement //rule 15
+Statements: Statement {$$ = new Statements(dynamic_cast<Statement*>($1));} //rule 14
+            | Statements LabelM Statement {$$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<LabelM*>($2), dynamic_cast<Statement*>($3));}//rule 15
 
 Statement: OpenStatement {$$ = new Statement($1);}
            | ClosedStatement {$$ = new Statement($1);}
            ;
 
-OpenStatement: IF NewScope LPAREN Exp IsBoolExp RPAREN ClosedStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 23
-                | IF NewScope LPAREN Exp IsBoolExp RPAREN OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 23
-                | IF NewScope LPAREN Exp IsBoolExp RPAREN ClosedStatement PopStacks ELSE NewScope OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();}
-                | WHILE WhileScope LPAREN Exp IsBoolExp RPAREN OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 25
+OpenStatement: IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8); popAllStacks();} //rule 23
+                | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8); popAllStacks();} //rule 23
+                | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope LabelM OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();}
+                | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($5), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8) $9); popAllStacks();} //rule 25
 
-ClosedStatement: SomeStatement {$$ = new ClosedStatement($1->line_no);}
-                  | IF NewScope LPAREN Exp IsBoolExp RPAREN ClosedStatement PopStacks ELSE NewScope ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 25
-                  | WHILE WhileScope LPAREN Exp IsBoolExp RPAREN ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4)); popAllStacks();} //rule 25
+ClosedStatement: SomeStatement {$$ = new ClosedStatement(dynamic_cast<SomeStatement*>($1));}
+                  | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();} //rule 25
+                  | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
 
 SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement($1); popAllStacks();} //rule 16
                    | Type ID SC {$$ = new SomeStatement($1, $2);} //rule 17

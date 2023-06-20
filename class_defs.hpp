@@ -113,6 +113,9 @@ class Expression : public ASTNode
 {
 public:
     string type_name;
+    vector<pair<int, BranchLabelIndex>> truelist;
+    vector<pair<int, BranchLabelIndex>> falselist;
+
     Expression(ASTNode *expression);
     Expression(ASTNode *node, string type_name);
     Expression(ASTNode *expression, ExpList *explist);
@@ -146,13 +149,16 @@ public:
 class OpenStatement : public ASTNode
 {
 public:
-    OpenStatement(Expression *statement);
-};
+    OpenStatement(Expression *expression);
+    OpenStatement(Expression *expression, LabelM* label_m, ASTNode* node);
+    OpenStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2);
+    OpenStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node);
+    };
 
 class ClosedStatement : public ASTNode
 {
 public:
-    ClosedStatement(Expression *statement);
+    ClosedStatement(Expression *expression);
     ClosedStatement(int line_no);
 };
 
@@ -229,17 +235,17 @@ public:
 
 /* Markers */
 class LabelM : public ASTNode{
-    LabelM();
-    ~LabelM();
-
-    string label;
+    public:
+        LabelM();
+        ~LabelM();
+        string label;
 };
 
 class ExitM : public ASTNode{
-    ExitM();
-    ~ExitM();
-
-    vector<pair<int, BranchLabelIndex>> nextlist;
+    public:
+        ExitM();
+        ~ExitM();
+        vector<pair<int, BranchLabelIndex>> nextlist;
 };
 
 

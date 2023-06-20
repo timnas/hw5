@@ -481,33 +481,107 @@ ExpList::ExpList(Expression* expression, ExpList* list) : ASTNode(expression->va
 
 Statement::Statement(ASTNode* statement) : ASTNode("Statement", statement->line_no) {
     CodeBuffer &buffer = CodeBuffer::instance();
-    this->nextlist = statement->nextlist;
-    this->breaklist = statement->breaklist;
-    this->continuelist = statement->continuelist;
+    nextlist = statement->nextlist;
+    breaklist = statement->breaklist;
+    continuelist = statement->continuelist;
     int end_of_statement = buffer.emit("br label @");
-    this->nextlist.push_back(make_pair(end_of_statement, FIRST));
+    nextlist.push_back(make_pair(end_of_statement, FIRST));
 }
 
 /* Statements Implementation */
 Statements::Statements(Statement *statement) : ASTNode("Statements", statement->line_no){
-    this->nextlist = statement->nextlist;
-    this->breaklist = statement->breaklist;
-    this->continuelist = statement->continuelist;
+    nextlist = statement->nextlist;
+    breaklist = statement->breaklist;
+    continuelist = statement->continuelist;
 }
 
 Statements::Statements(Statements *statements, LabelM *label_m, Statement *statement) : ASTNode("Statements", statement->line_no){
     CodeBuffer &buffer = CodeBuffer::instance();
-    buffer.bpatch(statements->nextlist, label_m)
+    buffer.bpatch(statements->nextlist, label_m->label);
+    nextlist = statement->nextlist;
+    breaklist = statement->breaklist;
+    continuelist = statement->continuelist;
 }
 
 /* OpenStatement Implementation */
 
 OpenStatement::OpenStatement(Expression* statement) : ASTNode("OpenStatement", statement->line_no) {}
 
+OpenStatement::OpenStatement(Expression* expression, LabelM* label_m, ASTNode* node) : ASTNode("OpenStatement", expression->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(expression->truelist, label_m->label);
+    continuelist = node->continuelist;
+    breaklist = node->breaklist;
+    nextlist = buffer.merge(expression->falselist, node->nextlist);
+
+    //TODO: CREATE something like "hookline", "hooklabel" + "end_close"...
+    // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
+    // buffer.bpatch(buffer.makelist(make_pair(this->end_line, FIRST)), this->end_label);
+}
+
+OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2) : ASTNode("OpenStatement", expression->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(expression->truelist, label_m1->label);
+    buffer.bpatch(expression->falselist, label_m2->label);
+    nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist)
+    continuelist = buffer.merge(node1->continuelist, node2->continuelist);
+    breaklist = buffer.merge(node1->breaklist, node2->breaklist);
+    //TODO
+    // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
+    // buffer.bpatch(buffer.makelist(make_pair(this->end_line, FIRST)), this->end_label);
+}
+
+
+OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node) : ASTNode("OpenStatement", expression->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(node->nextlist, label_m1->label);
+    buffer.bpatch(expression->truelist, label_m2->label);
+    nextlist = buffer.merge(expression->falselist, node->breaklist);
+
+    buffer.emit("br label %" + label_m1->label); ///?
+
+    //TODO
+    // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
+    // buffer.bpatch(buffer.makelist(make_pair(this->end_line, FIRST)), this->end_label);
+}
+
+
 /* ClosedStatement Implementation */
 
-ClosedStatement::ClosedStatement(Expression* statement) : ASTNode("ClosedStatement", statement->line_no) {}
 ClosedStatement::ClosedStatement(int line_no) : ASTNode("ClosedStatement", line_no) {}
+
+ClosedStatement::ClosedStatement(SomeStatement* statement) : ASTNode("ClosedStatement", statement->line_no) {
+    nextlist = statement->nextlist;
+    continuelist = statement->continuelist;
+    breaklist = statement->breaklist;
+}
+
+ClosedStatement::ClosedStatement(int line_no) : ASTNode("ClosedStatement", line_no) {}
+
+ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2) : ASTNode("ClosedStatement", expression->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(expression->truelist, label_m1->label);
+    buffer.bpatch(expression->falselist, label_m2->label);
+    nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist);
+    continuelist = buffer.merge(node1->continuelist, node2->continuelist);
+    breaklist = buffer.merge(node1->breaklist, node2->breaklist);
+
+    //TODO ...
+}
+
+ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node) : ASTNode("ClosedStatement", expression->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(node->nextlist, label_m1->label);
+    buffer.bpatch(expression->truelist, label_m2->label);
+    nextlist = buffer.merge(expression->falselist, node->breaklist);
+    buffer.bpatch(node->continuelist, label_m1->label);
+
+    buffer.emit("br label %" + label_m1->label); ///?
+    //TODO..
+}
+
+
+
 /* SomeStatement Implementation */
 
 SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatement", id->line_no) {
