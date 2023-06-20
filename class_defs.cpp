@@ -10,17 +10,14 @@ vector<Table> tables_stack;
 vector<int> offsets_stack;
 const int BYTE_MAX_SIZE = 255;
 
+
 /* ASTNode Implementation */
 
-ASTNode::ASTNode(string value, int line_no) : value(value), line_no(line_no) {
- //   std::cout<< "DEBUG ASTNode" <<std::endl;
-}
+ASTNode::ASTNode(string value, int line_no) : value(value), line_no(line_no) {}
 
 /* FuncDecl Implementation */
 FuncDecl::FuncDecl(int line_no, string ret_type_str, bool is_override, int num_args, vector<string> *arg_types) :
-        ASTNode("FuncDecl", line_no), ret_type(nullptr), ret_type_str(ret_type_str), isOverride(is_override), num_args(num_args), arg_types(*arg_types) {
-
-}
+        ASTNode("FuncDecl", line_no), ret_type(nullptr), ret_type_str(ret_type_str), isOverride(is_override), num_args(num_args), arg_types(*arg_types) {}
 
 FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* is_override) :
         ASTNode("FuncDecl", node->line_no), ret_type(ret_type) {
@@ -34,7 +31,6 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
     }
     arg_types = {};
 
-    // Calculate the number of arguments and store their types
     if (formals->func_args != nullptr) {
         for (auto arg = formals->func_args->args_list.begin(); arg != formals->func_args->args_list.end(); arg++) {
             arg_types.push_back((*arg)->arg_type);
@@ -58,24 +54,12 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
             }
         }
     }
-//    bool ambiguous = false;
-//    TableEntry check_if_override_wo_dec = getFunctionEntry(node, nullptr, nullptr, &func_name_exists, &ambiguous);
-//    if (func_name_exists) {
-//      //  std::cout<<"first if"<<std::endl;
-//        if (!isOverride && check_if_override_wo_dec.type.func_decl->isOverride) { //first dunc is not override
-//             //  std::cout<<"second if"<<std::endl;
-//            output::errorOverrideWithoutDeclaration(node->line_no, g_function_name);
-//            exit(0);
-//        }
-//    }
 
     func_name_exists = false;
     bool ambiguous = false;
     TableEntry override_func = getFunctionEntry(node, nullptr, formals->func_args, &func_name_exists, &ambiguous);
     if (func_name_exists) {
-//        std::cout<<"first if"<<std::endl;
         if (isOverride && !override_func.type.func_decl->isOverride) {
-//            std::cout<<"second if"<<std::endl;
             output::errorFuncNoOverride(node->line_no, g_function_name);
             exit(0);
         } else if ((isOverride && override_func.type.func_decl->isOverride
@@ -83,16 +67,11 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
                    && arg_types == override_func.type.func_decl->arg_types
                    && ret_type_str == override_func.type.func_decl->ret_type_str)
                    || ( !isOverride && !override_func.type.func_decl->isOverride)) { // both aren't override
-//            std::cout<<"overriding func's num_args: "<< override_func.type.func_decl->arg_types.size() <<std::endl;
-//            std::cout<<"overriding func's arg types: "<<arg_types.at(1)<<std::endl;
-//            std::cout<<"overriden func's arg types: "<<override_func.type.func_decl->arg_types.at(1)<<std::endl;
-//            std::cout<<"erroDef 5"<<std::endl;
             output::errorDef(node->line_no, g_function_name);
             exit(0);
         }
     }
     TableType func_type(true, this);
-//    std::cout <<"arg types size: " <<this->arg_types.size() <<std::endl;
     TableEntry func_entry(g_function_name, func_type, 0);
     tables_stack[0].table_entries_vec.push_back(func_entry);
 
@@ -138,61 +117,31 @@ void FuncDecl::emit(ASTNode *node) {
     Table &func_scope = tables_stack.back();
     func_scope.scope_reg = func_alloca_reg;
     buffer.emit(func_alloca_reg + " = alloca [50 x i32]");
-
 }
 
 
-
-
-/* OverRide Implementation */
-
-//OverRide::OverRide(int line_no) : ASTNode("OverRide", line_no) {}
-
 /* RetType Implementation */
 
-///changed the node value here (it used to be "RetType") and it fixed an issue. maybe it's wrong
 RetType::RetType(ASTNode *node) : ASTNode(node->value, node->line_no) {
- //   std::cout << "DEBUG RetType" << std::endl;
     g_return_type = node->value;
 
 }
 
 RetType::RetType(string type, int line_no) : ASTNode(type, line_no) {
-  //  std::cout << "DEBUG RetType" << std::endl;
     g_return_type = type;
 }
 
 
-
 /* Formals Implementation */
 
-Formals::Formals(int line_no) : ASTNode("Formals", line_no) {
-
-}
+Formals::Formals(int line_no) : ASTNode("Formals", line_no) {}
 
 Formals::Formals(FuncArgs* func_args) : ASTNode("Formals", func_args->line_no), func_args(func_args) {
-
-
-//TODO: is this needed? this part exists in the ref
-
-
-
-/// PROBLEM IS HERE: need to add tables_stack.push
-
-////    FuncDecl func_decl() //TODO: talk to Timna
-//    TableType func_type(true, func_decl);
-//    TableEntry func_entry(g_function_name, func_type, 0);
-//    tables_stack[0].table_entries_vec.push_back(func_entry);
-
-//    for(Arg* current_arg : func_args->args_list)
-//        std::cout << "current arg name: " << current_arg->arg_name << std::endl;
-
     int offset = -1;
     for (const auto &arg : func_args->args_list) {
 
         if (varIdTaken(arg->arg_name, nullptr)) {
             output::errorDef(func_args->line_no, arg->arg_name);
-//            std::cout << "DEBUG here is arg instead of name" << std::endl;
             exit(0);
         }
         TableEntry arg_entry(arg->arg_name, TableType(false, arg->arg_type), offset);
@@ -200,12 +149,12 @@ Formals::Formals(FuncArgs* func_args) : ASTNode("Formals", func_args->line_no), 
         offset -= 1;
     }
 }
+
 /* Arg Implementation */
 
 Arg::Arg(ASTNode* type, ASTNode* id) : ASTNode("Arg", id->line_no) {
     // is arg's id taken by curr func?
     if (g_function_name.compare(id->value) == 0) {
-//        std::cout<<"erroDef 1"<<std::endl;
         output::errorDef(id->line_no, id->value);
         exit(0);
     }
@@ -213,7 +162,6 @@ Arg::Arg(ASTNode* type, ASTNode* id) : ASTNode("Arg", id->line_no) {
     // is arg's id taken by any other func?
     for (const TableEntry& entry : tables_stack[0].table_entries_vec) {
         if (entry.name == id->value) {
-//            std::cout<<"erroDef 2"<<std::endl;
             output::errorDef(id->line_no, id->value);
             exit(0);
         }
@@ -234,8 +182,6 @@ FuncArgs::FuncArgs(Arg* arg) : ASTNode("FuncArgs", arg->line_no) {
 
 FuncArgs::FuncArgs(Arg* arg, FuncArgs* func_args) : ASTNode("FuncArgs", arg->line_no) {
     for (auto current_arg : func_args->args_list) {
-//        std::cout << "main arg: " << arg->arg_name << std::endl;
-//        std::cout << "curr iter: " << current_arg->arg_name << std::endl;
         if (current_arg->arg_name == arg->arg_name) {
             output::errorDef(func_args->line_no, arg->arg_name);
             exit(0);
@@ -266,10 +212,6 @@ string getDataTypeRepresentation(const string &dataType) {
 
 Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_no) {
     bool found;
- //   std::cout << "DEBUG t17- problem with recursion" << std::endl;
-    // std::cout<<" DEBUG mismatch 1"<<std::endl;
-//    std::cout << "DEBUG this is the place of seg 4" << std::endl;
-//    std::cout << "DEBUG expression value: "<<expression->value << std::endl;
     bool ambiguous = false;
     TableEntry func_entry = getFunctionEntry(expression, nullptr, nullptr, &found, &ambiguous);
     if (!found) {
@@ -289,7 +231,6 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
             arg_caps.push_back(getDataTypeRepresentation(type));
         }
         if (params.size() != 0){
-           // std::cout<<"mismatch 1"<<std::endl;
             output::errorPrototypeMismatch(expression->line_no, expression->value);
             exit(0);
         }
@@ -298,13 +239,11 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
 }
 
 Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->line_no), type_name(type) {
-//    std::cout << "DEBUG ENTERED EXP C'TOR" << std::endl;
     this->type_name = type;
     g_exp_type = this->type_name;
 
     if (type_name == "id") {
         TableType id_type;
-//        std::cout << "DEBUG this is the place of seg 1" << std::endl;
         if (!varIdTaken(node->value, &id_type)) {
             output::errorUndef(node->line_no, node->value);
             exit(0);
@@ -314,8 +253,7 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
     }
     else if (type_name == "byte") {
         int value = stoi(node->value);
-        if (value > BYTE_MAX_SIZE)
-        {
+        if (value > BYTE_MAX_SIZE) {
             output::errorByteTooLarge(node->line_no, node->value);
             exit(0);
         }
@@ -327,15 +265,11 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
     bool found = false;
     bool ambiguous = false;
     TableEntry func_entry = getFunctionEntry(expression, explist, nullptr, &found, &ambiguous);
-//    std::cout<<" DEBUG test 2: "<< explist->exp_list.back()->type_name << std::endl;
     if (ambiguous){
         output::errorAmbiguousCall(expression->line_no, expression->value);
         exit(0);
     }
     if (!found) {
-//        std::cout<<" DEBUG 3"<<std::endl;
-//        std::cout<<" line no: " << expression->line_no<<std::endl;
-
         output::errorUndefFunc(expression->line_no, expression->value);
         exit(0);
     }
@@ -345,40 +279,24 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
     g_exp_type = this->type_name;
     vector<string> params = func_entry.type.func_decl->arg_types;
 
-//    for (string str : params)
-//        std::cout << "DEBUG token is:" << getDataTypeRepresentation(str) << std::endl;
-
     if (!params.empty()) {
-        //std::cout << "params.size(): " << params.size() << std::endl;
-        //std::cout << "explist->exp_list.size() " << explist->exp_list.size() << std::endl;
         if (params.size() != explist->exp_list.size()) {
-//            std::cout<<"size of params: "<< params.size() <<std::endl;
-        //    std::cout << "mismatch 2" << std::endl;
             output::errorPrototypeMismatch(expression->line_no, expression->value);
             exit(0);
         }
     }
-    ///PROBLEM HERE!!! TYPE CAN ALSO BE A FUNC'S RETURN TYPE
-
-
     for (int i = 0; i < params.size(); i++) {
         Expression* arg = explist->exp_list[i];
-//        std::cout<<"arg->type_name: " << arg->type_name <<std::endl;
-//        std::cout<<"params[i]: " << params[i] <<std::endl;
         if (arg->type_name != params[i] && !(arg->type_name == "byte" && params[i] == "int")) {
-        //    std::cout << "mismatch 3" << std::endl;
             output::errorPrototypeMismatch(expression->line_no, expression->value);
             exit(0);
         }
     }
 }
 
-
-
 Expression::Expression(ASTNode* node, string operation, Expression* expression) : ASTNode(expression->value, node->line_no) {
     if (operation == "not"){
         if (!(expression->type_name == "bool")){
-            // std::cout<<"mismatch 4"<<std::endl;
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -395,7 +313,6 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
             g_exp_type = this->type_name;
         }
         else {
-//            std::cout<<"mismatch 5"<<std::endl;
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -405,7 +322,6 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
 Expression::Expression(ASTNode *node, string type_name, string operation, Expression* exp1, Expression* exp2) : ASTNode(type_name, node->line_no) {
     if (operation == "and" || operation == "or"){
         if (exp1->type_name != "bool" || exp2->type_name != "bool"){
-//            std::cout<<"mismatch 6"<<std::endl;
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -413,24 +329,21 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
         g_exp_type = this->type_name;
     }
     else if (operation == "binop"){
-//        std::cout << "DEBUG entering binop clause" << std::endl;
         this->type_name = "int"; //default
         if (exp1->type_name == "byte" && exp2->type_name == "byte"){
             this->type_name = "byte";
             g_exp_type = this->type_name;
         }
-        else if (!((exp1->type_name == "int" && exp2->type_name == "int") || (exp1->type_name == "int" && exp2->type_name == "byte") || (exp1->type_name == "byte" && exp2->type_name == "int")))
-        {
-//            std::cout<<"mismatch 7"<<std::endl;
+        else if (!((exp1->type_name == "int" && exp2->type_name == "int") ||
+                (exp1->type_name == "int" && exp2->type_name == "byte") ||
+                (exp1->type_name == "byte" && exp2->type_name == "int"))) {
             output::errorMismatch(node->line_no);
             exit(0);
         }
-//        std::cout << "DEBUG exited binop clause" << std::endl;
     }
     else if (operation == "relop"){
-        if (!((exp1->type_name == "int" || exp1->type_name == "byte") && (exp2->type_name == "int" || exp2->type_name == "byte")))
-        {
-//            std::cout<<"mismatch 8"<<std::endl;
+        if (!((exp1->type_name == "int" || exp1->type_name == "byte") &&
+            (exp2->type_name == "int" || exp2->type_name == "byte"))) {
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -484,7 +397,7 @@ Statement::Statement(ASTNode* statement) : ASTNode("Statement", statement->line_
     nextlist = statement->nextlist;
     breaklist = statement->breaklist;
     continuelist = statement->continuelist;
-    int end_of_statement = buffer.emit("br label @");
+    int end_of_statement = buffer.emit("br label @"); //according to example in line 42 in bp.cpp
     nextlist.push_back(make_pair(end_of_statement, FIRST));
 }
 
@@ -538,7 +451,7 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* l
     buffer.bpatch(expression->truelist, label_m2->label);
     nextlist = buffer.merge(expression->falselist, node->breaklist);
 
-    buffer.emit("br label %" + label_m1->label); ///?
+    buffer.emit("br label %" + label_m1->label);
 
     //TODO
     // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
@@ -576,7 +489,7 @@ ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, Label
     nextlist = buffer.merge(expression->falselist, node->breaklist);
     buffer.bpatch(node->continuelist, label_m1->label);
 
-    buffer.emit("br label %" + label_m1->label); ///?
+    buffer.emit("br label %" + label_m1->label);
     //TODO..
 }
 
@@ -665,8 +578,7 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
         // Do nothing for "call" or "{"
     }
     else if (node->value == "return") {
-        if (g_return_type != "VOID") /*Should be VOID? All caps? - YES! */ {
-//            std::cout<<"mismatch 14"<<std::endl;
+        if (g_return_type != "VOID") {
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -699,17 +611,6 @@ ExitM::ExitM() : ASTNode("Marker", 0){
     this->nextlist = buffer.makelist(make_pair(print_line, FIRST));
 }
 
-
-/* Table Implementation */
-
-/* TableEntry Implementation */
-//
-//TableEntry::TableEntry() : offset(0) {}
-//
-//TableEntry::TableEntry(string name, TableType type, int offset) : name(name), type(type), offset(offset) {}
-//
-//TableEntry::TableEntry(const TableEntry& table_entry) : name(table_entry.name), type(table_entry.type), offset(table_entry.offset) {}
-
 /* Auxiliaries Implementation */
 
 void validateMain(){
@@ -719,9 +620,6 @@ void validateMain(){
     TableEntry current_entry;
     for (int i = 0; i < size; i++){
         current_entry = top_table.table_entries_vec[i];
-//        std::cout<< "DEBUG num args: " << current_entry.type.func_decl->num_args << std::endl;
-//        std::cout<< "DEBUG function_type: " << current_entry.type.function_type << std::endl;
-//        std::cout<< "DEBUG name: " << current_entry.name << std::endl;
         if (current_entry.type.function_type){
             if (current_entry.name == "main"){
                 if (current_entry.type.func_decl->arg_types.size() != 0 || current_entry.type.func_decl->ret_type_str != "VOID"){
@@ -759,7 +657,6 @@ void initLLVM(){
 
 void initGlobalScope()
 {
- //   std::cout<< "DEBUG initGlobalScope" <<std::endl;
     vector<string> p_args = {"string"};
     vector<string> pi_args = {"int"};
     FuncDecl* p_decl = new FuncDecl(0, "VOID", false, 1, &p_args);
@@ -777,7 +674,6 @@ void initGlobalScope()
 
 void newScope()
 {
-  //  std::cout<< "DEBUG newScope" <<std::endl;
     offsets_stack.push_back(offsets_stack.back()); //try2
     Table t;
     t.contains_while_loop = tables_stack.back().contains_while_loop;
@@ -797,10 +693,8 @@ void newWhileScope()
 
 void isBool(int line_number)
 {
-    //cout << global_exp_type << endl;
     if (g_exp_type.compare("bool") != 0)
     {
-//        std::cout<<"mismatch 15"<<std::endl;
         output::errorMismatch(line_number);
         exit(0);
     }
@@ -809,39 +703,22 @@ void isBool(int line_number)
 
 bool varIdTaken(string id_name, TableType *id_type){
     Table *current_table;
-//    std::cout << "DEBUG looking for id_name: " << id_name << std::endl;
-    // excluding global
-
     for (int i = tables_stack.size()-1; i > 0; i--) {
         current_table = &tables_stack[i];
-//        std::cout << "i: " << i << std::endl;
-//        std::cout << "DEBUG tables_stack.size: " << tables_stack.size() << std::endl;
-
         for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
-//            std::cout << "vector's size is: " << current_table->table_entries_vec.size() << std::endl;
-//            std::cout << "j: " << j << std::endl;
             TableEntry *entry = &current_table->table_entries_vec[j];
-//            std::cout << "HI!!! entry->name: " << entry->name << std::endl;
             if (entry->name == id_name) {
                 if (id_type != nullptr) {
                     *id_type = entry->type;
-//                    std::cout << "DEBUG all good with " << id_name << std::endl;
                 }
-
-
                 return true;
             }
         }
-
     }
     return false;
 }
 
-
-
-
 void printScopesSymbols(){
-  //  std::cout<< "DEBUG printScopesSymbols" <<std::endl;
     output::endScope();
     Table *curr_scope = &tables_stack.back();
     for (int i=0; i<curr_scope->table_entries_vec.size(); i++){
@@ -850,7 +727,6 @@ void printScopesSymbols(){
             vector<string> args;
             if (curr_entry->type.func_decl->arg_types.size() != 0){
                 for (string type : curr_entry->type.func_decl->arg_types) {
-                    // PROBLEM! DOESN'T GET HERE
                     args.push_back(getDataTypeRepresentation(type));
                 }
             }
@@ -860,7 +736,6 @@ void printScopesSymbols(){
             output::printID(curr_entry->name, curr_entry->offset, getDataTypeRepresentation(curr_entry->type.variable_type));
         }
     }
- //   std::cout<< "DEBUG printScopesSymbols is ended" <<std::endl;
 }
 
 void addVarToStack(string name, string type)
@@ -890,7 +765,6 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
                     if (current_entry.type.func_decl->arg_types.size() == explist->exp_list.size()) {
 
                         bool match = true;
-//                        std::cout<<"func is: "<<current_entry.name<<std::endl;
                         for (int i=0; i< explist->exp_list.size() ; i++){
                             if (current_entry.type.func_decl->arg_types.at(i) != explist->exp_list.at(i)->type_name){
                                 if (!((current_entry.type.func_decl->arg_types.at(i) == "int" && explist->exp_list.at(i)->type_name == "byte"))){
@@ -900,7 +774,6 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
                                 }
                             }
                         }
-//                        std::cout<<"here"<<std::endl;
                         if (match){
                             if (*found){
                                 *ambiguous = true;
@@ -909,13 +782,11 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
                             *found = true;
                             found_entry = current_entry;
                         }
-
                     }
                 }
                 else if (funcargs) {
                     if (current_entry.type.func_decl->arg_types.size() == funcargs->args_list.size()) {
-                        if (*found){
-
+                        if (*found) {
                             *ambiguous = true;
                             return found_entry;
                         }
@@ -924,12 +795,10 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
                     }
                 }
                 else { //both null
-
                     if (current_entry.type.func_decl->arg_types.size() == 0){
                         *found = true;
                         return current_entry;
                     }
-
                 }
             }
             else {
