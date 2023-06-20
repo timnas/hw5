@@ -391,7 +391,28 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 //        exit(0);
 //    }
 //}
-
+Expression::Expression(ASTNode *node, string type_name, string operation, Expression *exp1, Expression *exp2, LabelM *label_m) : ASTNode(type_name, node->line_no){
+    if (operation == "and" || operation == "or"){
+        if (exp1->type_name != "bool" || exp2->type_name != "bool"){
+            output::errorMismatch(node->line_no);
+            exit(0);
+        }
+        this->type_name = "bool";
+        g_exp_type = "bool";
+        CodeBuffer &buffer = CodeBuffer::instance();
+        buffer.emit(";and or");
+        if (node->value == "or"){
+            buffer.bpatch(exp1->falselist, label_m->label);
+            this->truelist = buffer.merge(exp1->truelist, exp2->truelist);
+            this->falselist = exp2->falselist;
+        }
+        else if (node->value == "and"){
+            buffer.bpatch(exp1->truelist, label_m->label);
+            this->truelist = exp2->truelist;
+            this->falselist = buffer.merge(exp1->falselist, exp2->falselist);
+        }
+    }
+}
 /* ExpList Implementation */
 
 ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression->line_no) {
@@ -410,7 +431,7 @@ Statement::Statement(ASTNode* statement) : ASTNode("Statement", statement->line_
     nextlist = statement->nextlist;
     breaklist = statement->breaklist;
     continuelist = statement->continuelist;
-    int end_of_statement = buffer.emit("br label @"); //according to example in line 42 in bp.cpp
+    int end_of_statement = buffer.emit("br label @ ;statement"); //according to example in line 42 in bp.cpp
     nextlist.push_back(make_pair(end_of_statement, FIRST));
 }
 
@@ -477,32 +498,23 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* l
 ClosedStatement::ClosedStatement(int line_no) : ASTNode("ClosedStatement", line_no) {}
 
 ClosedStatement::ClosedStatement(SomeStatement* statement) : ASTNode("ClosedStatement", statement->line_no) {
-    std::cout<<"wrong ctor1"<<std::endl;
     nextlist = statement->nextlist;
     continuelist = statement->continuelist;
     breaklist = statement->breaklist;
 }
 
 ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2) : ASTNode("ClosedStatement", expression->line_no) {
-    std::cout<<"here1"<<std::endl;
     CodeBuffer &buffer = CodeBuffer::instance();
-    std::cout<<"here2"<<std::endl;
     buffer.bpatch(expression->truelist, label_m1->label);
-    std::cout<<"here3"<<std::endl;
     buffer.bpatch(expression->falselist, label_m2->label);
-    std::cout<<"here4"<<std::endl;
     nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist);
-    std::cout<<"here5"<<std::endl;
     continuelist = buffer.merge(node1->continuelist, node2->continuelist);
-    std::cout<<"here6"<<std::endl;
     breaklist = buffer.merge(node1->breaklist, node2->breaklist);
-    std::cout<<"here7"<<std::endl;
 
     //TODO ...
 }
 
 ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node) : ASTNode("ClosedStatement", expression->line_no) {
-    std::cout<<"wromg ctor2"<<std::endl;
     CodeBuffer &buffer = CodeBuffer::instance();
     buffer.bpatch(node->nextlist, label_m1->label);
     buffer.bpatch(expression->truelist, label_m2->label);
@@ -533,6 +545,14 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatemen
     }
 
     addVarToStack(id->value, type->value);
+
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_alloca = RegisterManager::registerAlloc();
+    TableEntry entry = tables_stack.back().table_entries_vec.back();
+    string reg = reg_alloca.getNewRegister();
+    buffer.emit(reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
+                                                                                                    to_string(entry.offset));
+    buffer.emit("store i32 0, i32* " + reg);
 }
 
 
@@ -560,6 +580,16 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
         exit(0);
     }
     addVarToStack(id->value, type->value);
+
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_alloca = RegisterManager::registerAlloc();
+    TableEntry entry = tables_stack.back().table_entries_vec.back();
+    string ptr_reg = reg_alloca.getNewRegister();
+    buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
+                to_string(entry.offset));
+    buffer.emit("store i32 0, i32* " + ptr_reg);
+
+    ///TODO: stopped here
 }
 
 SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("SomeStatement", expression->line_no)
@@ -628,7 +658,7 @@ LabelM::LabelM() : ASTNode("LabelM", -1) {
 
 ExitM::ExitM() : ASTNode("ExitM", -1){
     CodeBuffer &buffer = CodeBuffer::instance();
-    int print_line = buffer.emit("br label @");
+    int print_line = buffer.emit("br label @; exit");
     this->nextlist = buffer.makelist(make_pair(print_line, FIRST));
 }
 

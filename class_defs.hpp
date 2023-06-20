@@ -120,7 +120,8 @@ public:
     Expression(ASTNode *node, string type_name);
     Expression(ASTNode *expression, ExpList *explist);
     Expression(ASTNode *node, string operation, Expression *expression);
-    Expression(string operation, Expression *exp1, Expression *exp2, Expression *exp3);
+    Expression(ASTNode *node, string type_name, string operation, Expression *exp1, Expression *exp2, LabelM *label_m);
+   // Expression(string operation, Expression *exp1, Expression *exp2, Expression *exp3);
     Expression(ASTNode *node, string type_name, string operation, Expression *exp1, Expression *exp2);
 };
 
@@ -158,10 +159,10 @@ public:
 class ClosedStatement : public ASTNode
 {
 public:
+    ClosedStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2);
     ClosedStatement(Expression *expression);
     ClosedStatement(SomeStatement* statement);
     ClosedStatement(int line_no);
-    ClosedStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2);
     ClosedStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node);
 
 };
