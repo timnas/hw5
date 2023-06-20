@@ -107,7 +107,7 @@ OpenStatement: IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement {$
                 | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM OpenStatement {$$ = new OpenStatement(dynamic_cast<Expression*>($5), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8) $9); popAllStacks();} //rule 25
 
 ClosedStatement: SomeStatement {$$ = new ClosedStatement(dynamic_cast<SomeStatement*>($1));}
-                  | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();} //rule 25
+                  | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();} //rule 25
                   | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
 
 SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement($1); popAllStacks();} //rule 16
@@ -153,8 +153,6 @@ void deleteFuncDecl(){
         if (entry.name == "print" || entry.name == "printi"){ //FuncDecl dynamically allocated
             // std::cout<<"DEBUG inside deletefuncdecl: " << entry.type.func_decl <<std::endl;
             delete entry.type.func_decl;
-
-
         }
     }
 }
@@ -174,19 +172,16 @@ void yyerror(const char*){
     exit(0);
 }
 
-
 int main() {
     #ifdef YYDEBUG
     //  yydebug = 1;
     #endif
     initLLVM();
     int res = yyparse();
-    // std::cout<<"DEBUG res = " << res << std::endl;
     validateMain();
     popAllStacks();
     CodeBuffer &buffer = CodeBuffer::instance();
     buffer.printGlobalBuffer();
     buffer.printCodeBuffer();
-    // std::cout<<"DEBUG before ret"<<std::endl;
     return res;
 }
