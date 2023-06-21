@@ -219,7 +219,7 @@ string getDataTypeRepresentation(const string &dataType) {
         return "STRING";
     } else {
         // Handle the case when an unknown data type is encountered
-        return ""; // or throw an exception, print an error message, etc.
+        return "";
     }
 }
 
@@ -227,6 +227,9 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
     bool found;
     bool ambiguous = false;
     TableEntry func_entry = getFunctionEntry(expression, nullptr, nullptr, &found, &ambiguous);
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
+    string reg = reg_m.getNewRegister();
     if (!found) {
         output::errorUndefFunc(expression->line_no, expression->value);
         exit(0);
@@ -247,8 +250,20 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
             output::errorPrototypeMismatch(expression->line_no, expression->value);
             exit(0);
         }
-
     }
+
+    if(g_exp_type == "void" || g_exp_type == "VOID") {
+        buffer.emit("call void @" + func_entry.name + "()");
+    } else {
+        buffer.emit(reg + " call " + LLVMGetType(g_exp_type) + " @" + func_entry.name + "()");
+        store_loc = reg;
+    }
+    if (g_exp_type == "bool" || g_exp_type == "BOOL") {
+        int cond_line = buffer.emit("br i1 " + reg + ", label @, label @");
+        truelist = buffer.makelist(make_pair(cond_line, FIRST));
+        falselist = buffer.makelist(make_pair(cond_line, SECOND));
+    }
+
 }
 
 Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->line_no), type_name(type) {
@@ -529,7 +544,7 @@ ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, Label
 
 /* SomeStatement Implementation */
 
-SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatement", id->line_no) {
+SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatement", id->line_no) { //v
     if (varIdTaken(id->value)) {
 //        std::cout<<"erroDef 3"<<std::endl;
         output::errorDef(id->line_no, id->value);
@@ -556,10 +571,11 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatemen
 }
 
 
-SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression) : ASTNode("SomeStatement", id->line_no) // 16
+SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression) : ASTNode("SomeStatement", id->line_no) // 16 v
 {
     string lh_type = type->value;
     string rh_type = expression->type_name;
+    string expression_reg;
 
     if (varIdTaken(id->value)) {
         output::errorDef(id->line_no, id->value);
@@ -575,7 +591,6 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     }
 
      else if (lh_type != rh_type && !(lh_type == "int" && rh_type == "byte")) {
-//        std::cout<<"mismatch 11"<<std::endl;
         output::errorMismatch(id->line_no);
         exit(0);
     }
@@ -587,25 +602,42 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     string ptr_reg = reg_alloca.getNewRegister();
     buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                 to_string(entry.offset));
-    buffer.emit("store i32 0, i32* " + ptr_reg);
 
-    ///TODO: stopped here
+    string rh_data_type = getDataTypeRepresentation(rh_type);
+    if (rh_data_type == "BOOL") {
+        expression_reg = getBoolReg(expression);
+    } else if (rh_data_type == "BYTE") {
+        buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
+    } else if (rh_data_type == "INT") {
+        buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0"); //add zero
+    } else if (rh_data_type == "STRING") {
+        expression_reg = expression->store_loc;
+    }
+    buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
 }
 
-SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("SomeStatement", expression->line_no)
+SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("SomeStatement", expression->line_no) //kind of v
 {
-//    std::cout << "DEBUG SomeStatement CTOR!1" << std::endl;
+    CodeBuffer &buffer = CodeBuffer::instance();
     if (str == "return") {
         if (g_return_type == "void" || (!(g_return_type == "int" && expression->type_name == "byte") && g_return_type != expression->type_name)) {
-//            std::cout<<"glob ret = "<< g_return_type << std::endl;
-//            std::cout<<"expression->type_name = "<< expression->type_name << std::endl;
+
             output::errorMismatch(expression->line_no);
             exit(0);
+        }
+        RegisterManager &reg_m = RegisterManager::registerAlloc();
+        string ret_type = LLVMGetType(g_return_type);
+        if (ret_type == "void") {
+            buffer.emit("ret void");
+        } else {
+            if (ret_type == "i1") {
+                expression->store_loc = getBoolReg(expression);
+            }
+            buffer.emit("ret " + ret_type + " " + expression->store_loc);
         }
     }
     else {
         TableType type;
-//        std::cout << "DEBUG this is the place of seg 3" << std::endl;
 
         if (!varIdTaken(str, &type)) {
             output::errorUndef(expression->line_no, str);
@@ -615,35 +647,42 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
         string left_type = type.variable_type;
         string right_type = expression->type_name;
         if (left_type != right_type && !(left_type == "int" && right_type == "byte")) {
-//            std::cout<<"mismatch 13"<<std::endl;
             output::errorMismatch(expression->line_no);
             exit(0);
         }
+        buffer.emit(";SimpleStatement ctor of str+expression is called and exp is not return!");
     }
 }
 
-SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->line_no)
+SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->line_no) //v
 {
+    CodeBuffer &buffer = CodeBuffer::instance();
     if (node->value == "call" || node->value == "{") {
         // Do nothing for "call" or "{"
+        //TODO: perhaps need to save truelist and falselist for
     }
     else if (node->value == "return") {
         if (g_return_type != "VOID") {
             output::errorMismatch(node->line_no);
             exit(0);
         }
+        buffer.emit("ret void");
     }
     else if (node->value == "break") {
         if (!tables_stack.back().contains_while_loop) {
             output::errorUnexpectedBreak(node->line_no);
             exit(0);
         }
+        int break_line = buffer.emit("br label @");
+        breaklist = buffer.makelist(make_pair(break_line, FIRST));
     }
     else if (node->value == "continue") {
         if (!tables_stack.back().contains_while_loop) {
             output::errorUnexpectedContinue(node->line_no);
             exit(0);
         }
+        int cont_line = buffer.emit("br label @");
+        continuelist = buffer.makelist(make_pair(cont_line, FIRST));
     }
 }
 
@@ -651,18 +690,49 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
 LabelM::LabelM() : ASTNode("LabelM", -1) {
     CodeBuffer &buffer = CodeBuffer::instance();
     int print_line = buffer.emit("br label @");
-    this->label = buffer.genLabel();
-    buffer.bpatch(buffer.makelist(make_pair(print_line, FIRST)), this->label);
+    label = buffer.genLabel();
+    buffer.bpatch(buffer.makelist(make_pair(print_line, FIRST)), label);
 
 }
 
 ExitM::ExitM() : ASTNode("ExitM", -1){
     CodeBuffer &buffer = CodeBuffer::instance();
     int print_line = buffer.emit("br label @; exit");
-    this->nextlist = buffer.makelist(make_pair(print_line, FIRST));
+    nextlist = buffer.makelist(make_pair(print_line, FIRST));
 }
 
 /* Auxiliaries Implementation */
+
+string getBoolReg(Expression* expression) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_alloca = RegisterManager::registerAlloc();
+
+    int bp_start = buffer.emit("br label @");
+    int bp_fin_1 = buffer.emit("br label @");
+    int bp_fin_2 = buffer.emit("br label @");
+
+    string reg_true_val = reg_alloca.getNewRegister();
+    string reg_false_val = reg_alloca.getNewRegister();
+    string reg_final = reg_alloca.getNewRegister();
+
+    string label_true_val = buffer.genLabel();
+    string label_false_val = buffer.genLabel();
+    string label_final = buffer.genLabel();
+
+    buffer.emit(reg_true_val + " = add i1 1, 0");
+    buffer.emit(reg_false_val + " = add i1 0, 0");
+
+    buffer.emit(reg_final + " = phi i1 [1, %" + label_true_val + "], [0, %" + label_false_val + "]");
+
+    buffer.bpatch(expression->truelist, label_true_val);
+    buffer.bpatch(expression->falselist, label_false_val);
+
+    buffer.bpatch(buffer.makelist(make_pair(bp_start, FIRST)), label_true_val);
+    buffer.bpatch(buffer.makelist(make_pair(bp_fin_1, FIRST)), label_final);
+    buffer.bpatch(buffer.makelist(make_pair(bp_fin_2, FIRST)), label_final);
+
+    return reg_final;
+}
 
 void validateMain(){
   //  std::cout<< "DEBUG validateMain" <<std::endl;
@@ -730,6 +800,7 @@ void newScope()
     t.contains_while_loop = tables_stack.back().contains_while_loop;
     tables_stack.push_back(t);
     t.scope_reg = tables_stack.back().scope_reg;
+
 }
 
 void newWhileScope()
