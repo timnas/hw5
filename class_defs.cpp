@@ -269,7 +269,8 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
 Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->line_no), type_name(type) {
     this->type_name = type;
     g_exp_type = this->type_name;
-
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
     if (type_name == "id") {
         TableType id_type;
         if (!varIdTaken(node->value, &id_type)) {
@@ -278,6 +279,30 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
         }
         this->type_name = id_type.variable_type;
         g_exp_type = this->type_name;
+        // look in current scope if id is a function parameter
+        bool found = false;
+        TableEntry id_entry;
+        Table* current_table = &tables_stack[0];
+        for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
+            TableEntry *entry = &current_table->table_entries_vec[j];
+            if (entry->name == node->value) {
+                found =  true;
+                id_entry = *entry;
+            }
+        }
+        if (found){ // id is a function parameter
+            if (id_entry.offset < 0){
+                int param_index = (-1*id_entry.offset) -1;
+                this->store_loc = "%" + to_string(param_index);
+            }
+        }
+        else { //need to load from memory
+            this->store_loc = reg_m.getNewRegister();
+            string address = reg_m.getNewRegister();
+            buffer.emit(address + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
+                                to_string(id_entry.offset));
+            buffer.emit(this->store_loc + " = load i32, i32* " + address);
+        }
     }
     else if (type_name == "byte") {
         int value = stoi(node->value);
@@ -285,6 +310,28 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             output::errorByteTooLarge(node->line_no, node->value);
             exit(0);
         }
+        this->store_loc = node->value;
+    }
+    else if (type_name == "int"){
+        this->store_loc = node->value;
+    }
+    else if (type_name == "bool"){
+        if (node->value == "true"){
+            int br = buffer.emit("br label @ ; true");
+            this->truelist = buffer.makelist(make_pair(br, FIRST));
+        }
+        else if (node->value == "false"){
+            int br = buffer.emit("br label @ ; false");
+            this->falselist = buffer.makelist(make_pair(br, SECOND));
+        }
+    }
+    else if (type_name == "string"){
+        string str = reg_m.getNewString();
+        int str_len = node->value.size() - 1;
+        string str_len_str = to_string(str_len);
+        buffer.emitGlobal(str + " = constant [" + str_len_str + " x i8] c" + node->value.substr(0,str_len) + "\\00\"");
+        this->store_loc = reg_m.getNewRegister();
+        buffer.emit(this->store_loc + " = getelementptr [" + str_len_str + " x i8], [" + str_len_str + " x i8]* " + str + ", i32 0, i32 0");
     }
 }
 
@@ -320,9 +367,50 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
             exit(0);
         }
     }
+
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
+    string reg = reg_m.getNewRegister();
+    string args_str = " ";
+    string expression_reg;
+    for (int i=0; i<params.size(); i++){
+        args_str += LLVMGetType(params[i]);
+        args_str += " ";
+        string rh_data_type = getDataTypeRepresentation(params[i]);
+        if (rh_data_type == "BOOL") {
+            expression_reg = getBoolReg(explist->exp_list[i]);
+        } else if (rh_data_type == "BYTE") {
+            buffer.emit(expression_reg + " = zext i8 " + explist->exp_list[i]->store_loc + " to i32"); //zero extension
+        } else if (rh_data_type == "INT") {
+            buffer.emit(expression_reg + " = add i32 " + explist->exp_list[i]->store_loc + ", 0"); //add zero
+        } else if (rh_data_type == "STRING") {
+            expression_reg = explist->exp_list[i]->store_loc;
+        }
+        args_str += expression_reg;
+        args_str += ", ";
+    }
+    args_str = args_str.substr(0, args_str.size() - 2);
+
+    if (func_entry.type.func_decl->ret_type_str == "void"){
+        buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+    }
+    else {
+        buffer.emit(reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+    }
+    if (func_entry.type.func_decl->ret_type_str == "bool"){
+        string condition = reg_m.getNewRegister();
+        int br = buffer.emit("br i1 " + reg + ", label @, label @");
+        this->truelist = buffer.makelist(make_pair(br, FIRST));
+        this->falselist = buffer.makelist(make_pair(br, SECOND));
+    }
+    else {
+        this->store_loc = reg;
+    }
 }
 
 Expression::Expression(ASTNode* node, string operation, Expression* expression) : ASTNode(expression->value, node->line_no) {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
     if (operation == "not"){
         if (!(expression->type_name == "bool")){
             output::errorMismatch(node->line_no);
@@ -330,15 +418,28 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
         }
         this->type_name = "bool";
         g_exp_type = this->type_name;
+        this->truelist = expression->falselist;
+        this->falselist = expression->truelist;
     }
+    string reg = expression->store_loc;
     if (operation == "cast" && (expression->type_name == "int" || expression->type_name == "byte")){
         if (node->value == "byte"){
             this->type_name = "byte";
             g_exp_type = this->type_name;
+            if (expression->type_name == "int"){
+                reg = reg_m.getNewRegister();
+                buffer.emit(reg + " = trunc i32 " + expression->store_loc + " to i8");
+            }
+            this->store_loc = reg;
         }
         else if (node->value == "int"){
             this->type_name = "int";
             g_exp_type = this->type_name;
+            if (expression->type_name == "byte"){
+                reg = reg_m.getNewRegister();
+                buffer.emit(reg + " = zext i8 " + expression->store_loc + " to i32");
+            }
+            this->store_loc = reg;
         }
         else {
             output::errorMismatch(node->line_no);
@@ -348,15 +449,22 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
 }
 
 Expression::Expression(ASTNode *node, string type_name, string operation, Expression* exp1, Expression* exp2) : ASTNode(type_name, node->line_no) {
-    if (operation == "and" || operation == "or"){
-        if (exp1->type_name != "bool" || exp2->type_name != "bool"){
-            output::errorMismatch(node->line_no);
-            exit(0);
-        }
-        this->type_name = "bool";
-        g_exp_type = this->type_name;
-    }
-    else if (operation == "binop"){
+    CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
+    string exp1_loc = exp1->store_loc;
+    string exp2_loc = exp2->store_loc;
+    string typeLLVM = "i32"; // default
+    string op;
+    //commented this out since it's handeled in another c'tor
+//    if (operation == "and" || operation == "or"){
+//        if (exp1->type_name != "bool" || exp2->type_name != "bool"){
+//            output::errorMismatch(node->line_no);
+//            exit(0);
+//        }
+//        this->type_name = "bool";
+//        g_exp_type = this->type_name;
+//    }
+    if (operation == "binop"){
         this->type_name = "int"; //default
         if (exp1->type_name == "byte" && exp2->type_name == "byte"){
             this->type_name = "byte";
@@ -368,6 +476,50 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             output::errorMismatch(node->line_no);
             exit(0);
         }
+        if (exp1->type_name == "byte" && exp2->type_name == "int"){
+            string ext_exp1 = reg_m.getNewRegister();
+            buffer.emit(ext_exp1 + " = zext i8 " + exp1_loc + " to i32");
+            exp1_loc = ext_exp1;
+        }
+        else if (exp2->type_name == "byte" && exp1->type_name == "int"){
+            string ext_exp2 = reg_m.getNewRegister();
+            buffer.emit(ext_exp2 + " = zext i8 " + exp2_loc + " to i32");
+            exp2_loc = ext_exp2;
+        } else{
+            typeLLVM = LLVMGetType(exp1->type_name);
+        }
+
+        if (node->value == "+"){
+            op = "add";
+        }
+        else if (node->value == "-"){
+            op = "sub";
+        }
+        else if (node->value == "*"){
+            op = "mul";
+        }
+        else if (node->value == "/"){
+            //check if dividing by zero
+            string reg = reg_m.getNewRegister();
+            buffer.emit(reg + " = icmp eq " + typeLLVM + " 0, " + exp2_loc);
+            int bp = buffer.emit("br i1 " + reg + ", label @, label @");
+            string true_label = buffer.genLabel();
+            buffer.emit("call void (i8*) @print(i8* getelementptr ([23 x i8], [23 x i8]* @.div_by_zero_err_msg, i32 0, i32 0))");
+            buffer.emit("call void (i32) @exit(i32 0)");
+            int br = buffer.emit("br label @ ");
+            string false_label = buffer.genLabel();
+            buffer.bpatch(buffer.makelist(make_pair(bp, FIRST)), true_label);
+            buffer.bpatch(buffer.makelist(make_pair(bp, SECOND)), false_label);
+            buffer.bpatch(buffer.makelist(make_pair(br, FIRST)), false_label);
+            if (exp1->type_name == "byte" && exp2->type_name == "byte"){ //unsigned
+                op = "udiv";
+            }
+            else{
+                op = "sdiv";
+            }
+            this->store_loc = reg_m.getNewRegister();
+            buffer.emit(this->store_loc + " = " + op + " " + typeLLVM + " " + exp1_loc + ", " + exp2_loc);
+        }
     }
     else if (operation == "relop"){
         if (!((exp1->type_name == "int" || exp1->type_name == "byte") &&
@@ -377,6 +529,45 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
         }
         this->type_name = "bool";
         g_exp_type = this->type_name;
+        if (exp1->type_name == "byte" && exp2->type_name == "int"){
+            string ext_exp1 = reg_m.getNewRegister();
+            buffer.emit(ext_exp1 + " = zext i8 " + exp1_loc + " to i32");
+            exp1_loc = ext_exp1;
+        }
+        else if (exp2->type_name == "byte" && exp1->type_name == "int"){
+            string ext_exp2 = reg_m.getNewRegister();
+            buffer.emit(ext_exp2 + " = zext i8 " + exp2_loc + " to i32");
+            exp2_loc = ext_exp2;
+        }
+        else{
+            typeLLVM = LLVMGetType(exp1->type_name);
+        }
+
+        if (node->value == "<"){
+            op = "slt";
+        }
+        else if (node->value == "<="){
+            op = "sle";
+        }
+        else if (node->value == ">"){
+            op = "sgt";
+        }
+        else if(node->value == ">="){
+            op = "sge";
+        }
+        else if (node->value == "=="){
+            op = "eq";
+        }
+        else if (node->value == "!="){
+            op = "ne";
+        }
+
+        this->store_loc = reg_m.getNewRegister();
+        buffer.emit(this->store_loc + " = icmp " + op + " " + typeLLVM + " " + exp1_loc + ", " + exp2_loc);
+        int br = buffer.emit("br i1 " + this->store_loc + ", label @, label @");
+        this->truelist = buffer.makelist(make_pair(br, FIRST));
+        this->falselist = buffer.makelist(make_pair(br, SECOND));
+
     }
 }
 
@@ -431,6 +622,9 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 /* ExpList Implementation */
 
 ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression->line_no) {
+    if (expression->type_name == "bool"){
+        expression->store_loc = getBoolReg(expression);
+    }
     exp_list.push_back(expression);
 }
 
