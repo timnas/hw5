@@ -378,11 +378,11 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
         args_str += " ";
         string rh_data_type = getDataTypeRepresentation(params[i]);
         if (rh_data_type == "BOOL") {
-            expression_reg = getBoolReg(explist->exp_list[i]);
+            expression_reg = getBoolReg(explist->exp_list[i], "i32");
         } else if (rh_data_type == "BYTE") {
             buffer.emit(expression_reg + " = zext i8 " + explist->exp_list[i]->store_loc + " to i32"); //zero extension
         } else if (rh_data_type == "INT") {
-            buffer.emit(expression_reg + " = add i32 " + explist->exp_list[i]->store_loc + ", 0"); //add zero
+            buffer.emit(expression_reg + " = add i32 " + explist->exp_list[i]->store_loc + ", 0;1"); //add zero
         } else if (rh_data_type == "STRING") {
             expression_reg = explist->exp_list[i]->store_loc;
         }
@@ -391,7 +391,7 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
     }
     args_str = args_str.substr(0, args_str.size() - 2);
 
-    if (func_entry.type.func_decl->ret_type_str == "void"){
+    if (func_entry.type.func_decl->ret_type_str == "VOID") {
         buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
     }
     else {
@@ -506,7 +506,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             string true_label = buffer.genLabel();
             buffer.emit("call void (i8*) @print(i8* getelementptr ([23 x i8], [23 x i8]* @.div_by_zero_err_msg, i32 0, i32 0))");
             buffer.emit("call void (i32) @exit(i32 0)");
-            int br = buffer.emit("br label @ ");
+            int br = buffer.emit("br label @ ;8");
             string false_label = buffer.genLabel();
             buffer.bpatch(buffer.makelist(make_pair(bp, FIRST)), true_label);
             buffer.bpatch(buffer.makelist(make_pair(bp, SECOND)), false_label);
@@ -623,7 +623,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 
 ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression->line_no) {
     if (expression->type_name == "bool"){
-        expression->store_loc = getBoolReg(expression);
+        expression->store_loc = getBoolReg(expression, "i1");
     }
     exp_list.push_back(expression);
 }
@@ -694,7 +694,7 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* l
     buffer.bpatch(expression->truelist, label_m2->label);
     nextlist = buffer.merge(expression->falselist, node->breaklist);
 
-    buffer.emit("br label %" + label_m1->label);
+    buffer.emit("br label %" + label_m1->label+ ";9");
 
     //TODO
     // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
@@ -730,7 +730,7 @@ ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, Label
     nextlist = buffer.merge(expression->falselist, node->breaklist);
     buffer.bpatch(node->continuelist, label_m1->label);
 
-    buffer.emit("br label %" + label_m1->label);
+    buffer.emit("br label %" + label_m1->label + ";1");
     //TODO..
 }
 
@@ -769,7 +769,6 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
 {
     string lh_type = type->value;
     string rh_type = expression->type_name;
-    string expression_reg;
 
     if (varIdTaken(id->value)) {
         output::errorDef(id->line_no, id->value);
@@ -794,16 +793,18 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     RegisterManager &reg_alloca = RegisterManager::registerAlloc();
     TableEntry entry = tables_stack.back().table_entries_vec.back();
     string ptr_reg = reg_alloca.getNewRegister();
+    string expression_reg = reg_alloca.getNewRegister();
     buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                 to_string(entry.offset));
 
     string rh_data_type = getDataTypeRepresentation(rh_type);
     if (rh_data_type == "BOOL") {
-        expression_reg = getBoolReg(expression);
+        buffer.emit(";sending i1 to getboolreg");
+        expression_reg = getBoolReg(expression, "i1");
     } else if (rh_data_type == "BYTE") {
         buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
     } else if (rh_data_type == "INT") {
-        buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0"); //add zero
+        buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0;2"); //add zero
     } else if (rh_data_type == "STRING") {
         expression_reg = expression->store_loc;
     }
@@ -825,7 +826,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             buffer.emit("ret void");
         } else {
             if (ret_type == "i1") {
-                expression->store_loc = getBoolReg(expression);
+                expression->store_loc = getBoolReg(expression, ret_type);
             }
             buffer.emit("ret " + ret_type + " " + expression->store_loc);
         }
@@ -844,7 +845,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             output::errorMismatch(expression->line_no);
             exit(0);
         }
-        buffer.emit(";SimpleStatement ctor of str+expression is called and exp is not return!");
+        buffer.emit(";SomeStatement ctor of str+expression is called and exp is not return!");
     }
 }
 
@@ -867,7 +868,7 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
             output::errorUnexpectedBreak(node->line_no);
             exit(0);
         }
-        int break_line = buffer.emit("br label @");
+        int break_line = buffer.emit("br label @ ;2");
         breaklist = buffer.makelist(make_pair(break_line, FIRST));
     }
     else if (node->value == "continue") {
@@ -875,7 +876,7 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
             output::errorUnexpectedContinue(node->line_no);
             exit(0);
         }
-        int cont_line = buffer.emit("br label @");
+        int cont_line = buffer.emit("br label @ ;3");
         continuelist = buffer.makelist(make_pair(cont_line, FIRST));
     }
 }
@@ -883,7 +884,7 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
 /*Markers Implementation*/
 LabelM::LabelM() : ASTNode("LabelM", -1) {
     CodeBuffer &buffer = CodeBuffer::instance();
-    int print_line = buffer.emit("br label @");
+    int print_line = buffer.emit("br label @ ;4");
     label = buffer.genLabel();
     buffer.bpatch(buffer.makelist(make_pair(print_line, FIRST)), label);
 
@@ -897,32 +898,39 @@ ExitM::ExitM() : ASTNode("ExitM", -1){
 
 /* Auxiliaries Implementation */
 
-string getBoolReg(Expression* expression) {
+string getBoolReg(Expression* expression, string size) {
     CodeBuffer &buffer = CodeBuffer::instance();
     RegisterManager &reg_alloca = RegisterManager::registerAlloc();
 
-    int bp_start = buffer.emit("br label @");
-    int bp_fin_1 = buffer.emit("br label @");
-    int bp_fin_2 = buffer.emit("br label @");
 
+    int bp_start = buffer.emit("br label @ ;5");
     string reg_true_val = reg_alloca.getNewRegister();
+    string label_true_val = buffer.genLabel();
+    buffer.emit(reg_true_val + " = add " + size + " 1, 0");
+    int bp_fin_1 = buffer.emit("br label @ ;6");
+
     string reg_false_val = reg_alloca.getNewRegister();
+    string label_false_val = buffer.genLabel();
+    buffer.emit(reg_false_val + " = add " + size + " 0, 0");
+    int bp_fin_2 = buffer.emit("br label @ ;7");
+
+
     string reg_final = reg_alloca.getNewRegister();
 
-    string label_true_val = buffer.genLabel();
-    string label_false_val = buffer.genLabel();
     string label_final = buffer.genLabel();
 
-    buffer.emit(reg_true_val + " = add i1 1, 0");
-    buffer.emit(reg_false_val + " = add i1 0, 0");
 
-    buffer.emit(reg_final + " = phi i1 [1, %" + label_true_val + "], [0, %" + label_false_val + "]");
+
+    buffer.emit(reg_final + " = phi " + size + "[1, %" + label_true_val + "], [0, %" + label_false_val + "]");
 
     buffer.bpatch(expression->truelist, label_true_val);
     buffer.bpatch(expression->falselist, label_false_val);
 
     buffer.bpatch(buffer.makelist(make_pair(bp_start, FIRST)), label_true_val);
+
+
     buffer.bpatch(buffer.makelist(make_pair(bp_fin_1, FIRST)), label_final);
+
     buffer.bpatch(buffer.makelist(make_pair(bp_fin_2, FIRST)), label_final);
 
     return reg_final;

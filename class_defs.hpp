@@ -259,7 +259,7 @@ public:
  */
 
 void initLLVM();
-string getBoolReg(Expression* expression);
+string getBoolReg(Expression* expression, string size);
 void validateMain();
 void initGlobalScope();
 void newScope();
