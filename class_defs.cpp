@@ -6,6 +6,7 @@ using namespace std;
 string g_return_type;
 string g_function_name;
 string g_exp_type;
+bool bool_size;
 vector<Table> tables_stack;
 vector<int> offsets_stack;
 const int BYTE_MAX_SIZE = 255;
@@ -122,12 +123,13 @@ void FuncDecl::emit(ASTNode *node) {
 void FuncDecl::endFunc(Statements *statements){
     CodeBuffer &buffer = CodeBuffer::instance();
     string ret_type = LLVMGetType(this->ret_type_str);
+    buffer.emit(";end func in func decl label");
+
     string end_label = buffer.genLabel();
     buffer.bpatch((statements->nextlist), end_label);
-    if (ret_type != "void"){
+    if (ret_type != "void") {
         buffer.emit("ret " + ret_type + " 0");
-    }
-    else{
+    } else {
         buffer.emit("ret " + ret_type);
     }
     buffer.emit("}");
@@ -300,7 +302,7 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             this->store_loc = reg_m.getNewRegister();
             string address = reg_m.getNewRegister();
             buffer.emit(address + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
-                                to_string(id_entry.offset));
+                                to_string(id_entry.offset) + ";DEBUG3");
             buffer.emit(this->store_loc + " = load i32, i32* " + address);
         }
     }
@@ -373,12 +375,12 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
     string reg = reg_m.getNewRegister();
     string args_str = " ";
     string expression_reg;
-    for (int i=0; i<params.size(); i++){
+    for (int i = 0; i < params.size(); i++){
         args_str += LLVMGetType(params[i]);
         args_str += " ";
         string rh_data_type = getDataTypeRepresentation(params[i]);
         if (rh_data_type == "BOOL") {
-            expression_reg = getBoolReg(explist->exp_list[i], "i32");
+            expression_reg = getBoolReg(explist->exp_list[i], false);
         } else if (rh_data_type == "BYTE") {
             buffer.emit(expression_reg + " = zext i8 " + explist->exp_list[i]->store_loc + " to i32"); //zero extension
         } else if (rh_data_type == "INT") {
@@ -503,6 +505,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             string reg = reg_m.getNewRegister();
             buffer.emit(reg + " = icmp eq " + typeLLVM + " 0, " + exp2_loc);
             int bp = buffer.emit("br i1 " + reg + ", label @, label @");
+
             string true_label = buffer.genLabel();
             buffer.emit("call void (i8*) @print(i8* getelementptr ([23 x i8], [23 x i8]* @.div_by_zero_err_msg, i32 0, i32 0))");
             buffer.emit("call void (i32) @exit(i32 0)");
@@ -623,7 +626,8 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 
 ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression->line_no) {
     if (expression->type_name == "bool"){
-        expression->store_loc = getBoolReg(expression, "i1");
+        expression->store_loc = getBoolReg(expression, false);
+        expression->val_calc();
     }
     exp_list.push_back(expression);
 }
@@ -760,7 +764,7 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatemen
     TableEntry entry = tables_stack.back().table_entries_vec.back();
     string reg = reg_alloca.getNewRegister();
     buffer.emit(reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
-                                                                                                    to_string(entry.offset));
+                                                                                                    to_string(entry.offset) + ";DEBUG1");
     buffer.emit("store i32 0, i32* " + reg);
 }
 
@@ -794,42 +798,55 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     TableEntry entry = tables_stack.back().table_entries_vec.back();
     string ptr_reg = reg_alloca.getNewRegister();
     string expression_reg = reg_alloca.getNewRegister();
-    buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
-                to_string(entry.offset));
+
 
     string rh_data_type = getDataTypeRepresentation(rh_type);
+    if (expression->is_val_calc) {
+        buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0");
+    }
     if (rh_data_type == "BOOL") {
+        bool_size = true;
         buffer.emit(";sending i1 to getboolreg");
-        expression_reg = getBoolReg(expression, "i1");
+        expression_reg = getBoolReg(expression, bool_size);
     } else if (rh_data_type == "BYTE") {
-        buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
+        if (bool_size)
+            buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
+        else
+            buffer.emit(expression_reg + " = add i8 " + expression->store_loc + ", 0");
     } else if (rh_data_type == "INT") {
         buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0;2"); //add zero
     } else if (rh_data_type == "STRING") {
         expression_reg = expression->store_loc;
     }
+    buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
+                to_string(entry.offset) + ";DEBUG2");
     buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
 }
 
 SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("SomeStatement", expression->line_no) //kind of v
 {
     CodeBuffer &buffer = CodeBuffer::instance();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
     if (str == "return") {
         if (g_return_type == "void" || (!(g_return_type == "int" && expression->type_name == "byte") && g_return_type != expression->type_name)) {
 
             output::errorMismatch(expression->line_no);
             exit(0);
         }
-        RegisterManager &reg_m = RegisterManager::registerAlloc();
+
         string ret_type = LLVMGetType(g_return_type);
         if (ret_type == "void") {
             buffer.emit("ret void");
         } else {
             if (ret_type == "i1") {
-                expression->store_loc = getBoolReg(expression, ret_type);
+                buffer.emit(";DEBUG sending false here!");
+                expression->store_loc = getBoolReg(expression, false);
             }
             buffer.emit("ret " + ret_type + " " + expression->store_loc);
         }
+//        TODO !!!
+//        buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
+
     }
     else {
         TableType type;
@@ -838,7 +855,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             output::errorUndef(expression->line_no, str);
             exit(0);
         }
-
+        TableEntry entry = tables_stack.back().table_entries_vec.back(); //TODO! IS THIS WHAT WE NEED? THE ENTRY'S OFFSET? (AT A FEW LINES DOWN, INSIDE THE EMIT)
         string left_type = type.variable_type;
         string right_type = expression->type_name;
         if (left_type != right_type && !(left_type == "int" && right_type == "byte")) {
@@ -846,6 +863,34 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             exit(0);
         }
         buffer.emit(";SomeStatement ctor of str+expression is called and exp is not return!");
+        string ptr_reg = reg_m.getNewRegister();
+
+
+        string expression_reg = reg_m.getNewRegister();
+        bool_size = true;
+
+        string data_type = getDataTypeRepresentation(expression->type_name);
+        if (expression->is_val_calc) {
+            buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0");
+        }
+        if (data_type == "BOOL") {
+            buffer.emit(";sending i1 to getboolreg- in somestatement c'tor");
+            expression_reg = getBoolReg(expression, bool_size);
+        } else if (data_type == "BYTE") {
+            if (bool_size)
+                buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
+            else
+                buffer.emit(expression_reg + " = add i8 " + expression->store_loc + ", 0");
+        } else if (data_type == "INT") {
+            buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0;2"); //add zero
+        } else if (data_type == "STRING") {
+            expression_reg = expression->store_loc;
+        }
+
+
+        buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
+                            to_string(entry.offset));
+        buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
     }
 }
 
@@ -898,11 +943,14 @@ ExitM::ExitM() : ASTNode("ExitM", -1){
 
 /* Auxiliaries Implementation */
 
-string getBoolReg(Expression* expression, string size) {
+string getBoolReg(Expression* expression, bool bool_size) {
     CodeBuffer &buffer = CodeBuffer::instance();
     RegisterManager &reg_alloca = RegisterManager::registerAlloc();
-
-
+    string size;
+    if (bool_size)
+        size = "i32";
+    else
+        size = "ii";
     int bp_start = buffer.emit("br label @ ;5");
     string reg_true_val = reg_alloca.getNewRegister();
     string label_true_val = buffer.genLabel();
@@ -918,8 +966,6 @@ string getBoolReg(Expression* expression, string size) {
     string reg_final = reg_alloca.getNewRegister();
 
     string label_final = buffer.genLabel();
-
-
 
     buffer.emit(reg_final + " = phi " + size + "[1, %" + label_true_val + "], [0, %" + label_false_val + "]");
 
@@ -1000,8 +1046,9 @@ void newScope()
     offsets_stack.push_back(offsets_stack.back()); //try2
     Table t;
     t.contains_while_loop = tables_stack.back().contains_while_loop;
-    tables_stack.push_back(t);
     t.scope_reg = tables_stack.back().scope_reg;
+    tables_stack.push_back(t);
+
 
 }
 
@@ -1010,8 +1057,9 @@ void newWhileScope()
     offsets_stack.push_back(offsets_stack.back()); //try1
     Table t;
     t.contains_while_loop = true;
-    tables_stack.push_back(t);
     t.scope_reg = tables_stack.back().scope_reg;
+    tables_stack.push_back(t);
+
 }
 
 

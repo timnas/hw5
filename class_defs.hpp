@@ -114,6 +114,7 @@ class Expression : public ASTNode
 public:
     string type_name;
     string store_loc;
+    bool is_val_calc;
     vector<pair<int, BranchLabelIndex>> truelist;
     vector<pair<int, BranchLabelIndex>> falselist;
 
@@ -123,6 +124,9 @@ public:
     Expression(ASTNode *node, string operation, Expression *expression);
     Expression(ASTNode *node, string type_name, string operation, Expression *exp1, Expression *exp2, LabelM *label_m);
     Expression(ASTNode *node, string type_name, string operation, Expression *exp1, Expression *exp2);
+    void val_calc() {
+        this->is_val_calc = true;
+    }
 };
 
 class ExpList : public ASTNode
@@ -259,7 +263,7 @@ public:
  */
 
 void initLLVM();
-string getBoolReg(Expression* expression, string size);
+string getBoolReg(Expression* expression, bool bool_size);
 void validateMain();
 void initGlobalScope();
 void newScope();
