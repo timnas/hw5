@@ -114,6 +114,10 @@ class Expression : public ASTNode
 public:
     string type_name;
     string store_loc;
+
+    string tmp_line;
+    string tmp_label;
+
     bool is_val_calc;
     vector<pair<int, BranchLabelIndex>> truelist;
     vector<pair<int, BranchLabelIndex>> falselist;

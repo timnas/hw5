@@ -279,6 +279,9 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             output::errorUndef(node->line_no, node->value);
             exit(0);
         }
+
+        // HOOK
+
         this->type_name = id_type.variable_type;
         g_exp_type = this->type_name;
         // look in current scope if id is a function parameter
@@ -305,6 +308,8 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
                                 to_string(id_entry.offset) + ";DEBUG3");
             buffer.emit(this->store_loc + " = load i32, i32* " + address);
         }
+
+        // HOOK_close
     }
     else if (type_name == "byte") {
         int value = stoi(node->value);
@@ -314,20 +319,23 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
         }
         this->store_loc = node->value;
     }
-    else if (type_name == "int"){
+    else if (type_name == "int") {
         this->store_loc = node->value;
     }
-    else if (type_name == "bool"){
-        if (node->value == "true"){
+    else if (type_name == "bool") {
+
+        // HOOK
+        if (node->value == "true") {
             int br = buffer.emit("br label @ ; true");
             this->truelist = buffer.makelist(make_pair(br, FIRST));
         }
-        else if (node->value == "false"){
+        else if (node->value == "false") {
             int br = buffer.emit("br label @ ; false");
             this->falselist = buffer.makelist(make_pair(br, SECOND));
         }
     }
-    else if (type_name == "string"){
+    else if (type_name == "string") {
+        // HOOK
         string str = reg_m.getNewString();
         int str_len = node->value.size() - 1;
         string str_len_str = to_string(str_len);
