@@ -115,8 +115,11 @@ public:
     string type_name;
     string store_loc;
 
-    string tmp_line;
-    string tmp_label;
+    int start_line;
+    string start_label;
+
+    int end_line;
+    string end_label;
 
     bool is_val_calc;
     vector<pair<int, BranchLabelIndex>> truelist;
@@ -181,6 +184,7 @@ public:
     SomeStatement(ASTNode *type, ASTNode *id, Expression *expression); //(16)
     SomeStatement(string str, Expression *expression);           // 17, 20
     SomeStatement(ASTNode *node);                            // (14, 18,19,24,25)
+    SomeStatement(Statements* statements, ASTNode *node);
 };
 
 /* Markers */

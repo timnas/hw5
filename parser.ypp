@@ -110,7 +110,7 @@ ClosedStatement: SomeStatement {$$ = new ClosedStatement(dynamic_cast<SomeStatem
                    {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();} //rule 25
                   | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
 
-SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement($1); popAllStacks();} //rule 16
+SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement(dynamic_cast<Statements*>($3), $1); popAllStacks();} //rule 16
                    | Type ID SC {$$ = new SomeStatement($1, $2);} //rule 17
                    | Type ID ASSIGN Exp SC {$$ = new SomeStatement($1, $2, dynamic_cast<Expression*>($4));} //rule 18
                    | ID ASSIGN Exp SC {$$ = new SomeStatement($1->value, dynamic_cast<Expression*>($3));} //rule 19

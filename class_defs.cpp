@@ -253,6 +253,8 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
             exit(0);
         }
     }
+    start_line = buffer.emit("br label @");
+    start_label = buffer.genLabel();
 
     if(g_exp_type == "void" || g_exp_type == "VOID") {
         buffer.emit("call void @" + func_entry.name + "()");
@@ -266,6 +268,8 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
         falselist = buffer.makelist(make_pair(cond_line, SECOND));
     }
 
+    end_line = buffer.emit("br label @");
+    end_label = buffer.genLabel();
 }
 
 Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->line_no), type_name(type) {
@@ -280,7 +284,8 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             exit(0);
         }
 
-        // HOOK
+        start_line = buffer.emit("br label @");
+        start_label = buffer.genLabel();
 
         this->type_name = id_type.variable_type;
         g_exp_type = this->type_name;
@@ -309,7 +314,8 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             buffer.emit(this->store_loc + " = load i32, i32* " + address);
         }
 
-        // HOOK_close
+        end_line = buffer.emit("br label @");
+        end_label = buffer.genLabel();
     }
     else if (type_name == "byte") {
         int value = stoi(node->value);
@@ -318,13 +324,22 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             exit(0);
         }
         this->store_loc = node->value;
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
+        end_line = buffer.emit("br label @ ;end_line");
+        end_label = buffer.genLabel();
     }
     else if (type_name == "int") {
         this->store_loc = node->value;
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
+        end_line = buffer.emit("br label @ ;end_line");
+        end_label = buffer.genLabel();
     }
     else if (type_name == "bool") {
 
-        // HOOK
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
         if (node->value == "true") {
             int br = buffer.emit("br label @ ; true");
             this->truelist = buffer.makelist(make_pair(br, FIRST));
@@ -333,15 +348,20 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             int br = buffer.emit("br label @ ; false");
             this->falselist = buffer.makelist(make_pair(br, SECOND));
         }
+        end_line = buffer.emit("br label @ ;end_line");
+        end_label = buffer.genLabel();
     }
     else if (type_name == "string") {
-        // HOOK
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
         string str = reg_m.getNewString();
         int str_len = node->value.size() - 1;
         string str_len_str = to_string(str_len);
         buffer.emitGlobal(str + " = constant [" + str_len_str + " x i8] c" + node->value.substr(0,str_len) + "\\00\"");
         this->store_loc = reg_m.getNewRegister();
         buffer.emit(this->store_loc + " = getelementptr [" + str_len_str + " x i8], [" + str_len_str + " x i8]* " + str + ", i32 0, i32 0");
+        end_line = buffer.emit("br label @ ;end_line");
+        end_label = buffer.genLabel();
     }
 }
 
@@ -380,6 +400,8 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
 
     CodeBuffer &buffer = CodeBuffer::instance();
     RegisterManager &reg_m = RegisterManager::registerAlloc();
+    start_line = buffer.emit("br label @ ;start_line");
+    start_label = buffer.genLabel();
     string reg = reg_m.getNewRegister();
     string args_str = " ";
     string expression_reg;
@@ -416,6 +438,8 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
     else {
         this->store_loc = reg;
     }
+    end_line = buffer.emit("br label @ ;end_line");
+    end_label = buffer.genLabel();
 }
 
 Expression::Expression(ASTNode* node, string operation, Expression* expression) : ASTNode(expression->value, node->line_no) {
@@ -456,6 +480,12 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
             exit(0);
         }
     }
+    start_line = buffer.emit("br label @ ;start_line");
+    start_label = buffer.genLabel();
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
+    end_line = buffer.emit("br label @ ;end_line");
+    end_label = buffer.genLabel();
 }
 
 Expression::Expression(ASTNode *node, string type_name, string operation, Expression* exp1, Expression* exp2) : ASTNode(type_name, node->line_no) {
@@ -486,6 +516,15 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             output::errorMismatch(node->line_no);
             exit(0);
         }
+
+
+        buffer.bpatch(buffer.makelist(make_pair(exp1->start_line, FIRST)), exp1->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp1->end_line, FIRST)), exp1->end_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp2->start_line, FIRST)), exp2->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp2->end_line, FIRST)), exp2->end_label);
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
+
         if (exp1->type_name == "byte" && exp2->type_name == "int"){
             string ext_exp1 = reg_m.getNewRegister();
             buffer.emit(ext_exp1 + " = zext i8 " + exp1_loc + " to i32");
@@ -530,6 +569,8 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             }
             this->store_loc = reg_m.getNewRegister();
             buffer.emit(this->store_loc + " = " + op + " " + typeLLVM + " " + exp1_loc + ", " + exp2_loc);
+            start_line = buffer.emit("br label @ ;start_line");
+            start_label = buffer.genLabel();
         }
     }
     else if (operation == "relop"){
@@ -538,6 +579,13 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             output::errorMismatch(node->line_no);
             exit(0);
         }
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
+        buffer.bpatch(buffer.makelist(make_pair(exp1->start_line, FIRST)), exp1->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp1->end_line, FIRST)), exp1->end_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp2->start_line, FIRST)), exp2->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp2->end_line, FIRST)), exp2->end_label);
+
         this->type_name = "bool";
         g_exp_type = this->type_name;
         if (exp1->type_name == "byte" && exp2->type_name == "int"){
@@ -578,7 +626,8 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
         int br = buffer.emit("br i1 " + this->store_loc + ", label @, label @");
         this->truelist = buffer.makelist(make_pair(br, FIRST));
         this->falselist = buffer.makelist(make_pair(br, SECOND));
-
+        end_line = buffer.emit("br label @ ;end_line");
+        end_label = buffer.genLabel();
     }
 }
 
@@ -618,6 +667,15 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
         g_exp_type = "bool";
         CodeBuffer &buffer = CodeBuffer::instance();
         buffer.emit(";and or");
+
+        start_line = buffer.emit("br label @ ;start_line");
+        start_label = buffer.genLabel();
+        buffer.bpatch(buffer.makelist(make_pair(exp1->start_line, FIRST)), exp1->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp1->end_line, FIRST)), exp1->end_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp2->start_line, FIRST)), exp2->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(exp2->end_line, FIRST)), exp2->end_label);
+
+
         if (node->value == "or"){
             buffer.bpatch(exp1->falselist, label_m->label);
             this->truelist = buffer.merge(exp1->truelist, exp2->truelist);
@@ -628,6 +686,8 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             this->truelist = exp2->truelist;
             this->falselist = buffer.merge(exp1->falselist, exp2->falselist);
         }
+        end_line = buffer.emit("br label @ ;start_line");
+        end_label = buffer.genLabel();
     }
 }
 /* ExpList Implementation */
@@ -638,11 +698,17 @@ ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression
         expression->val_calc();
     }
     exp_list.push_back(expression);
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 }
 
 ExpList::ExpList(Expression* expression, ExpList* list) : ASTNode(expression->value, expression->line_no) {
     this->exp_list.push_back(expression);
     this->exp_list.insert(this->exp_list.end(), list->exp_list.begin(), list->exp_list.end());
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 }
 
 /* Statement Implementation */
@@ -682,9 +748,8 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m, ASTNode* n
     breaklist = node->breaklist;
     nextlist = buffer.merge(expression->falselist, node->nextlist);
 
-    //TODO: CREATE something like "hookline", "hooklabel" + "end_close"...
-    // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
-    // buffer.bpatch(buffer.makelist(make_pair(this->end_line, FIRST)), this->end_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 }
 
 OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, ASTNode* node1, ExitM* exit_m, LabelM* label_m2, ASTNode* node2) : ASTNode("OpenStatement", expression->line_no) {
@@ -694,9 +759,9 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, ASTNode* 
     nextlist = buffer.merge(buffer.merge(node1->nextlist, exit_m->nextlist), node2->nextlist);
     continuelist = buffer.merge(node1->continuelist, node2->continuelist);
     breaklist = buffer.merge(node1->breaklist, node2->breaklist);
-    //TODO
-    // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
-    // buffer.bpatch(buffer.makelist(make_pair(this->end_line, FIRST)), this->end_label);
+
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 }
 
 
@@ -707,10 +772,12 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* l
     nextlist = buffer.merge(expression->falselist, node->breaklist);
 
     buffer.emit("br label %" + label_m1->label+ ";9");
+    buffer.bpatch(node->continuelist, label_m1->label); //TODO: TIMNA-ADD
 
-    //TODO
-    // buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
-    // buffer.bpatch(buffer.makelist(make_pair(this->end_line, FIRST)), this->end_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
+
+
 }
 
 
@@ -732,7 +799,10 @@ ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, ASTNo
     continuelist = buffer.merge(node1->continuelist, node2->continuelist);
     breaklist = buffer.merge(node1->breaklist, node2->breaklist);
 
-    //TODO ...
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
+
+
 }
 
 ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node) : ASTNode("ClosedStatement", expression->line_no) {
@@ -743,12 +813,21 @@ ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, Label
     buffer.bpatch(node->continuelist, label_m1->label);
 
     buffer.emit("br label %" + label_m1->label + ";1");
-    //TODO..
+
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
+
 }
 
 
 
 /* SomeStatement Implementation */
+
+SomeStatement::SomeStatement(Statements* statements, ASTNode *node) : ASTNode("SomeStatement", node->line_no) {
+    nextlist = statements->nextlist;
+    continuelist = statements->continuelist;
+    breaklist = statements->breaklist;
+}
 
 SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatement", id->line_no) { //v
     if (varIdTaken(id->value)) {
@@ -802,6 +881,11 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     addVarToStack(id->value, type->value);
 
     CodeBuffer &buffer = CodeBuffer::instance();
+
+    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
+
+
     RegisterManager &reg_alloca = RegisterManager::registerAlloc();
     TableEntry entry = tables_stack.back().table_entries_vec.back();
     string ptr_reg = reg_alloca.getNewRegister();
@@ -852,8 +936,9 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             }
             buffer.emit("ret " + ret_type + " " + expression->store_loc);
         }
-//        TODO !!!
-//        buffer.bpatch(buffer.makelist(make_pair(this->hook_line, FIRST)), this->hook_label);
+
+        buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 
     }
     else {
@@ -872,6 +957,9 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
         }
         buffer.emit(";SomeStatement ctor of str+expression is called and exp is not return!");
         string ptr_reg = reg_m.getNewRegister();
+
+        buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
+        buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 
 
         string expression_reg = reg_m.getNewRegister();
@@ -907,7 +995,18 @@ SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->lin
     CodeBuffer &buffer = CodeBuffer::instance();
     if (node->value == "call" || node->value == "{") {
         // Do nothing for "call" or "{"
-        //TODO: perhaps need to save truelist and falselist for
+
+        //TODO: perhaps need to save truelist and falselist. return here!
+
+        if (dynamic_cast<Expression *>(node)->type_name == "bool" ||
+            dynamic_cast<Expression *>(node)->type_name == "BOOL") {
+            int tmp_line = buffer.emit("br label @");
+            string tmp_lbl = buffer.genLabel();
+            buffer.bpatch(dynamic_cast<Expression *>(node)->truelist, tmp_lbl);
+            buffer.bpatch(dynamic_cast<Expression *>(node)->falselist, tmp_lbl);
+            buffer.bpatch(buffer.makelist(make_pair(tmp_line, FIRST)), tmp_lbl);
+        }
+//        std::cout << "DEBUG after if clause in SS ctor" << std::endl;
     }
     else if (node->value == "return") {
         if (g_return_type != "VOID") {
