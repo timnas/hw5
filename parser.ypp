@@ -108,7 +108,7 @@ OpenStatement: IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement {$
 ClosedStatement: SomeStatement {$$ = new ClosedStatement(dynamic_cast<SomeStatement*>($1)); }
                   | IF NewScope LPAREN Exp LabelM IsBoolExp RPAREN ClosedStatement ExitM PopStacks ELSE NewScope LabelM ClosedStatement
                    {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($5), $8, dynamic_cast<ExitM*>($9), dynamic_cast<LabelM*>($13), $14); popAllStacks();} //rule 25
-                  | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($4), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
+                  | WHILE LabelM WhileScope LPAREN Exp IsBoolExp RPAREN LabelM ClosedStatement {$$ = new ClosedStatement(dynamic_cast<Expression*>($5), dynamic_cast<LabelM*>($2), dynamic_cast<LabelM*>($8), $9); popAllStacks();} //rule 25
 
 SomeStatement:  LBRACE NewScope Statements RBRACE {$$ = new SomeStatement(dynamic_cast<Statements*>($3), $1); popAllStacks();} //rule 16
                    | Type ID SC {$$ = new SomeStatement($1, $2);} //rule 17
