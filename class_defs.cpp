@@ -292,17 +292,27 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
         this->type_name = id_type.variable_type;
         g_exp_type = this->type_name;
         // look in current scope if id is a function parameter
+
         bool found = false;
         TableEntry id_entry;
-        Table* current_table = &tables_stack[0];
-        for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
-            TableEntry *entry = &current_table->table_entries_vec[j];
-            if (entry->name == node->value) {
-                found =  true;
-                id_entry = *entry;
+
+        buffer.emit(";DEBUG id is: " + node->value);
+//        buffer.emit("; scope size is: " + to_string(current_table->table_entries_vec.size()));
+        Table *current_table;
+        for (int i = tables_stack.size()-1; i > 0; i--) {
+            current_table = &tables_stack[i];
+            for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
+                TableEntry *entry = &current_table->table_entries_vec[j];
+                if (entry->name == node->value) {
+                    found =  true;
+                    id_entry = *entry;
+                }
             }
         }
+
+
         if (found) { // id is a function parameter
+            buffer.emit(";DEBUG id is a function parameter");
             if (id_entry.offset < 0){
                 int param_index = (-1*id_entry.offset) -1;
                 this->store_loc = "%" + to_string(param_index);
@@ -363,11 +373,11 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
 
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
-        if (node->value == "true") {
+        if (this->value == "true") {
             int br = buffer.emit("br label @ ; true");
             this->truelist = buffer.makelist(make_pair(br, FIRST));
         }
-        else if (node->value == "false") {
+        else if (this->value == "false") {
             int br = buffer.emit("br label @ ; false");
             this->falselist = buffer.makelist(make_pair(br, SECOND));
         }
