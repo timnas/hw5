@@ -284,6 +284,8 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             exit(0);
         }
 
+        buffer.emit(";DEBUG! Expression::Expression(" + node->value + ")");
+
 //        start_line = buffer.emit("br label @");
 //        start_label = buffer.genLabel();
 
@@ -300,10 +302,16 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
                 id_entry = *entry;
             }
         }
-        if (found){ // id is a function parameter
+        if (found) { // id is a function parameter
             if (id_entry.offset < 0){
                 int param_index = (-1*id_entry.offset) -1;
                 this->store_loc = "%" + to_string(param_index);
+
+                if (type_name == "bool") {
+                    int tmp_br = buffer.emit("br i1 " + store_loc + ", label @, label @");
+                    truelist.push_back(make_pair(tmp_br, FIRST));
+                    falselist.push_back(make_pair(tmp_br, SECOND));
+                }
             }
         }
         else { //need to load from memory
@@ -312,6 +320,21 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             buffer.emit(address + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                                 to_string(id_entry.offset) + ";DEBUG3");
             buffer.emit(this->store_loc + " = load i32, i32* " + address);
+
+            if (type_name == "bool") {
+                string clause = reg_m.getNewRegister();
+                buffer.emit(clause + " = trunc i32 " + store_loc + " to i1");
+                int tmp_br = buffer.emit("br i1 " + clause + ", label @, label @");
+
+                truelist.push_back(make_pair(tmp_br, FIRST));
+                falselist.push_back(make_pair(tmp_br, SECOND));
+            }
+
+            else if (type_name == "byte") {
+                string trunc_reg = reg_m.getNewRegister();
+                buffer.emit(trunc_reg + " = trunc i32 " + store_loc + " to i8");
+                store_loc = trunc_reg;
+            }
         }
 
 //        end_line = buffer.emit("br label @");
@@ -357,8 +380,9 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
         string str = reg_m.getNewString();
         int str_len = node->value.size() - 1;
         string str_len_str = to_string(str_len);
+
         buffer.emitGlobal(str + " = constant [" + str_len_str + " x i8] c" + node->value.substr(0,str_len) + "\\00\"");
-        this->store_loc = reg_m.getNewRegister();
+        store_loc = reg_m.getNewRegister();
         buffer.emit(this->store_loc + " = getelementptr [" + str_len_str + " x i8], [" + str_len_str + " x i8]* " + str + ", i32 0, i32 0");
 //        end_line = buffer.emit("br label @ ;end_line");
 //        end_label = buffer.genLabel();
