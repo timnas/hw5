@@ -161,6 +161,9 @@ Formals::Formals(FuncArgs* func_args) : ASTNode("Formals", func_args->line_no), 
         }
         TableEntry arg_entry(arg->arg_name, TableType(false, arg->arg_type), offset);
         tables_stack.back().table_entries_vec.push_back(arg_entry);
+        CodeBuffer &buffer = CodeBuffer::instance();
+        buffer.emit(";DEBUG id is: " + arg->arg_name);
+        buffer.emit(";DEBUG scope size is: " + to_string(tables_stack.back().table_entries_vec.size()));
         offset -= 1;
     }
 }
@@ -292,16 +295,32 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
         // look in current scope if id is a function parameter
         bool found = false;
         TableEntry id_entry;
-        Table* current_table = &tables_stack[0];
-        for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
-            TableEntry *entry = &current_table->table_entries_vec[j];
-            if (entry->name == node->value) {
-                found =  true;
-                id_entry = *entry;
+
+        buffer.emit(";DEBUG id is: " + node->value);
+//        buffer.emit("; scope size is: " + to_string(current_table->table_entries_vec.size()));
+        Table *current_table;
+        for (int i = tables_stack.size()-1; i > 0; i--) {
+            current_table = &tables_stack[i];
+            for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
+                TableEntry *entry = &current_table->table_entries_vec[j];
+                if (entry->name == node->value) {
+                    found =  true;
+                    id_entry = *entry;
+                }
             }
         }
+//        for (int j = 0; j < current_table->table_entries_vec.size(); j++) {
+//            TableEntry *entry = &current_table->table_entries_vec[j];
+//            buffer.emit("; entry name is: " + entry->name);
+//            if (entry->name == node->value) {
+//                found =  true;
+//                id_entry = *entry;
+//            }
+//        }
+        bool loaded_from_mem = false;
         if (found){ // id is a function parameter
             if (id_entry.offset < 0){
+                buffer.emit(";DEBUG id is a function parameter");
                 int param_index = (-1*id_entry.offset) -1;
                 this->store_loc = "%" + to_string(param_index);
             }
@@ -312,6 +331,22 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             buffer.emit(address + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                                 to_string(id_entry.offset) + ";DEBUG3");
             buffer.emit(this->store_loc + " = load i32, i32* " + address);
+            loaded_from_mem = true;
+        }
+        if (this->type_name == "bool"){
+            buffer.emit(";DEBUG loaded is: " + to_string(loaded_from_mem));
+            if (loaded_from_mem){
+                string br = reg_m.getNewRegister();
+                buffer.emit(br + " = trunc i32 " + this->store_loc + " to i1");
+                int line = buffer.emit("br i1 " + br + ", label @, label @" + "; here1");
+                this->truelist.push_back(make_pair(line, FIRST));
+                this->falselist.push_back(make_pair(line, SECOND));
+            }
+            else {
+                int line = buffer.emit("br i1 " + this->store_loc + ", label @, label @ ; here2");
+                this->truelist.push_back(make_pair(line, FIRST));
+                this->falselist.push_back(make_pair(line, SECOND));
+            }
         }
 
 //        end_line = buffer.emit("br label @");
@@ -340,11 +375,12 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
 
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
-        if (node->value == "true") {
+        buffer.emit(";DEBUG val is: " + this->value);
+        if (this->value == "true") {
             int br = buffer.emit("br label @ ; true");
             this->truelist = buffer.makelist(make_pair(br, FIRST));
         }
-        else if (node->value == "false") {
+        else if (this->value == "false") {
             int br = buffer.emit("br label @ ; false");
             this->falselist = buffer.makelist(make_pair(br, SECOND));
         }
@@ -810,9 +846,9 @@ ClosedStatement::ClosedStatement(Expression* expression, LabelM* label_m1, Label
     buffer.bpatch(node->nextlist, label_m1->label);
     buffer.bpatch(expression->truelist, label_m2->label);
     nextlist = buffer.merge(expression->falselist, node->breaklist);
+    buffer.emit("br label %" + label_m1->label + ";1");
     buffer.bpatch(node->continuelist, label_m1->label);
 
-    buffer.emit("br label %" + label_m1->label + ";1");
 
 //    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
 //    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
