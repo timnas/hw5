@@ -961,15 +961,11 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     if (expression->is_val_calc) {
         buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0");
     }
-    bool_size = true;
     if (rh_data_type == "BOOL") {
         buffer.emit(";sending i1 to getboolreg");
-        expression_reg = getBoolReg(expression, bool_size);
+        expression_reg = getBoolReg(expression, true);
     } else if (rh_data_type == "BYTE") {
-        if (bool_size)
-            buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
-        else
-            buffer.emit(expression_reg + " = add i8 " + expression->store_loc + ", 0");
+        buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
     } else if (rh_data_type == "INT") {
         buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0;2"); //add zero
     } else if (rh_data_type == "STRING") {
