@@ -113,8 +113,8 @@ void FuncDecl::emit(ASTNode *node) {
     }
     CodeBuffer &buffer = CodeBuffer::instance();
     buffer.emit("define " + ret_type + " @" + node->value + "(" + parameter_list + ") {");
-    RegisterManager &new_reg = RegisterManager::registerAlloc();
-    string func_alloca_reg = new_reg.getNewRegister();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
+    string func_alloca_reg = reg_m.getNewRegister();
     Table &func_scope = tables_stack.back();
     func_scope.scope_reg = func_alloca_reg;
     buffer.emit(func_alloca_reg + " = alloca [50 x i32]");
@@ -263,6 +263,7 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
         store_loc = reg;
     }
     if (g_exp_type == "bool" || g_exp_type == "BOOL") {
+        string tmp = reg_m.getNewRegister(); ///?
         int cond_line = buffer.emit("br i1 " + reg + ", label @, label @");
         truelist = buffer.makelist(make_pair(cond_line, FIRST));
         falselist = buffer.makelist(make_pair(cond_line, SECOND));
@@ -356,13 +357,14 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             output::errorByteTooLarge(node->line_no, node->value);
             exit(0);
         }
-        this->store_loc = node->value;
+        this->store_loc = node->value; //v
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
 //        end_line = buffer.emit("br label @ ;end_line");
 //        end_label = buffer.genLabel();
     }
     else if (type_name == "int") {
+        buffer.emit(";DEBUG adding an int with node value: " + node->value);
         this->store_loc = node->value;
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
@@ -374,10 +376,12 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
         if (this->value == "true") {
+            store_loc = "1";
             int br = buffer.emit("br label @ ; true");
             this->truelist = buffer.makelist(make_pair(br, FIRST));
         }
         else if (this->value == "false") {
+            store_loc = "0";
             int br = buffer.emit("br label @ ; false");
             this->falselist = buffer.makelist(make_pair(br, SECOND));
         }
@@ -403,8 +407,9 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
 Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", expression->line_no) {
     bool found = false;
     bool ambiguous = false;
+    vector<bool> is_cast;
     TableEntry func_entry = getFunctionEntry(expression, explist, nullptr, &found, &ambiguous);
-    if (ambiguous){
+    if (ambiguous) {
         output::errorAmbiguousCall(expression->line_no, expression->value);
         exit(0);
     }
@@ -416,7 +421,7 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
     this->type_name = func_entry.type.func_decl->ret_type_str;
 
     g_exp_type = this->type_name;
-    vector<string> params = func_entry.type.func_decl->arg_types;
+    vector <string> params = func_entry.type.func_decl->arg_types;
 
     if (!params.empty()) {
         if (params.size() != explist->exp_list.size()) {
@@ -425,7 +430,7 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
         }
     }
     for (int i = 0; i < params.size(); i++) {
-        Expression* arg = explist->exp_list[i];
+        Expression *arg = explist->exp_list[i];
         if (arg->type_name != params[i] && !(arg->type_name == "byte" && params[i] == "int")) {
             output::errorPrototypeMismatch(expression->line_no, expression->value);
             exit(0);
@@ -437,43 +442,71 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
 //    start_line = buffer.emit("br label @ ;start_line");
 //    start_label = buffer.genLabel();
     string reg = reg_m.getNewRegister();
-    string args_str = " ";
+    string args_str = "";
     string expression_reg;
-    for (int i = 0; i < params.size(); i++){
-        args_str += LLVMGetType(params[i]);
-        args_str += " ";
-        string rh_data_type = getDataTypeRepresentation(params[i]);
-        if (rh_data_type == "BOOL") {
-            expression_reg = getBoolReg(explist->exp_list[i], false);
-        } else if (rh_data_type == "BYTE") {
-            buffer.emit(expression_reg + " = zext i8 " + explist->exp_list[i]->store_loc + " to i32"); //zero extension
-        } else if (rh_data_type == "INT") {
-            buffer.emit(expression_reg + " = add i32 " + explist->exp_list[i]->store_loc + ", 0;1"); //add zero
-        } else if (rh_data_type == "STRING") {
-            expression_reg = explist->exp_list[i]->store_loc;
-        }
-        args_str += expression_reg;
-        args_str += ", ";
-    }
-    args_str = args_str.substr(0, args_str.size() - 2);
 
-    if (func_entry.type.func_decl->ret_type_str == "VOID") {
-        buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+    for (int i = 0; i < params.size(); i++) {
+        if (getDataTypeRepresentation(explist->exp_list[i]->type_name) == "BYTE" &&
+            getDataTypeRepresentation(params[i]) == "INT") {
+            is_cast.push_back(true);
+        } else if (getDataTypeRepresentation(explist->exp_list[i]->type_name) != getDataTypeRepresentation(params[i])) {
+            output::errorPrototypeMismatch(expression->line_no, expression->value);
+        } else {
+            is_cast.push_back(false);
+        }
     }
-    else {
-        buffer.emit(reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
-    }
-    if (func_entry.type.func_decl->ret_type_str == "bool"){
-        string condition = reg_m.getNewRegister();
-        int br = buffer.emit("br i1 " + reg + ", label @, label @");
-        this->truelist = buffer.makelist(make_pair(br, FIRST));
-        this->falselist = buffer.makelist(make_pair(br, SECOND));
-    }
-    else {
-        this->store_loc = reg;
-    }
+
+    for (int i = 0; i < params.size(); i++) {
+        string tmp_reg = reg_m.getNewRegister();
+        if (is_cast[i]) {
+            args_str += "i32";
+            if (explist->exp_list[i]->is_val_calc) {
+                buffer.emit(tmp_reg + " = add i1 " + explist->exp_list[i]->store_loc + ", 0");
+            }
+            buffer.emit(tmp_reg + " = zext i8 " + explist->exp_list[i]->store_loc + " to i32");
+            args_str += tmp_reg;
+            args_str += ", ";
+
+        } else {
+            buffer.emit(";DEBUG: " + explist->exp_list[i]->value + "'s store loc is- " + explist->exp_list[i]->store_loc);
+            string data_type = getDataTypeRepresentation(explist->exp_list[i]->type_name);
+            args_str += LLVMGetType(params[i]);
+            args_str += " ";
+            if (explist->exp_list[i]->is_val_calc) {
+                buffer.emit(tmp_reg + " = add i1 " + explist->exp_list[i]->store_loc + ", 0");
+            } else if (data_type == "BOOL") {
+                tmp_reg = getBoolReg(explist->exp_list[i], false);
+            } else if (data_type == "BYTE") {
+                buffer.emit(tmp_reg + " = add i8 " + explist->exp_list[i]->store_loc + ", 0");
+            } else if (data_type == "INT") {
+                buffer.emit(tmp_reg + " = add i32 " + explist->exp_list[i]->store_loc + ", 0");
+            } else if (data_type == "STRING") {
+                tmp_reg = explist->exp_list[i]->store_loc;
+            }
+
+            args_str += tmp_reg;
+            args_str += ", ";
+        }
+
+        args_str = args_str.substr(0, args_str.size() - 2);
+
+        if (func_entry.type.func_decl->ret_type_str == "VOID") {
+            buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+        } else {
+            buffer.emit(
+                    reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+        }
+
+        if (func_entry.type.func_decl->ret_type_str == "bool") {
+            int br = buffer.emit("br i1 " + reg + ", label @, label @");
+            this->truelist = buffer.makelist(make_pair(br, FIRST));
+            this->falselist = buffer.makelist(make_pair(br, SECOND));
+        } else {
+            this->store_loc = reg;
+        }
 //    end_line = buffer.emit("br label @ ;end_line");
 //    end_label = buffer.genLabel();
+    }
 }
 
 Expression::Expression(ASTNode* node, string operation, Expression* expression) : ASTNode(expression->value, node->line_no) {
@@ -504,7 +537,7 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
             this->type_name = "int";
             g_exp_type = this->type_name;
             if (expression->type_name == "byte"){
-                reg = reg_m.getNewRegister();
+                reg = reg_m.getNewRegister(); //v
                 buffer.emit(reg + " = zext i8 " + expression->store_loc + " to i32");
             }
             this->store_loc = reg;
@@ -527,6 +560,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
     RegisterManager &reg_m = RegisterManager::registerAlloc();
     string exp1_loc = exp1->store_loc;
     string exp2_loc = exp2->store_loc;
+    buffer.emit(";exp2 store loc is: " + exp2_loc);
     string typeLLVM = "i32"; // default
     string op;
     //commented this out since it's handeled in another c'tor
@@ -559,29 +593,29 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
 
-        if (exp1->type_name == "byte" && exp2->type_name == "int"){
+        if (exp1->type_name == "byte" && exp2->type_name == "int") {
             string ext_exp1 = reg_m.getNewRegister();
             buffer.emit(ext_exp1 + " = zext i8 " + exp1_loc + " to i32");
             exp1_loc = ext_exp1;
         }
-        else if (exp2->type_name == "byte" && exp1->type_name == "int"){
+        else if (exp2->type_name == "byte" && exp1->type_name == "int") {
             string ext_exp2 = reg_m.getNewRegister();
             buffer.emit(ext_exp2 + " = zext i8 " + exp2_loc + " to i32");
             exp2_loc = ext_exp2;
-        } else{
+        } else {
             typeLLVM = LLVMGetType(exp1->type_name);
         }
 
-        if (node->value == "+"){
+        if (node->value == "+") {
             op = "add";
         }
-        else if (node->value == "-"){
+        else if (node->value == "-") {
             op = "sub";
         }
-        else if (node->value == "*"){
+        else if (node->value == "*") {
             op = "mul";
         }
-        else if (node->value == "/"){
+        else if (node->value == "/") {
             //check if dividing by zero
             string reg = reg_m.getNewRegister();
             buffer.emit(reg + " = icmp eq " + typeLLVM + " 0, " + exp2_loc);
@@ -727,7 +761,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 /* ExpList Implementation */
 
 ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression->line_no) {
-    if (expression->type_name == "bool"){
+    if (expression->type_name == "bool") {
         expression->store_loc = getBoolReg(expression, false);
         expression->val_calc();
     }
@@ -881,9 +915,9 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatemen
     addVarToStack(id->value, type->value);
 
     CodeBuffer &buffer = CodeBuffer::instance();
-    RegisterManager &reg_alloca = RegisterManager::registerAlloc();
+    RegisterManager &reg_m = RegisterManager::registerAlloc();
     TableEntry entry = tables_stack.back().table_entries_vec.back();
-    string reg = reg_alloca.getNewRegister();
+    string reg = reg_m.getNewRegister();
     buffer.emit(reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                                                                                                     to_string(entry.offset) + ";DEBUG1");
     buffer.emit("store i32 0, i32* " + reg);
