@@ -360,8 +360,8 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
 //        end_label = buffer.genLabel();
     }
     else if (type_name == "int") {
-        buffer.emit(";DEBUG adding an int with node value: " + node->value);
-        this->store_loc = node->value;
+        buffer.emit(";DEBUG adding an int with node value: " + this->value);
+        this->store_loc = this->value;
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
 //        end_line = buffer.emit("br label @ ;end_line");
@@ -961,8 +961,8 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     if (expression->is_val_calc) {
         buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0");
     }
+    bool_size = true;
     if (rh_data_type == "BOOL") {
-        bool_size = true;
         buffer.emit(";sending i1 to getboolreg");
         expression_reg = getBoolReg(expression, bool_size);
     } else if (rh_data_type == "BYTE") {
@@ -977,7 +977,10 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     }
     buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                 to_string(entry.offset) + ";DEBUG2");
+    buffer.emit("; DEBUG before store i32. type is: " + rh_data_type);
     buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
+
+
 }
 
 SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("SomeStatement", expression->line_no) //kind of v
