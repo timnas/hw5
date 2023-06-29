@@ -130,9 +130,9 @@ void FuncDecl::endFunc(Statements *statements){
     string end_label = buffer.genLabel();
     buffer.bpatch((statements->nextlist), end_label);
     if (ret_type != "void") {
-        buffer.emit("ret " + ret_type + " 0");
+        buffer.emit("ret " + ret_type + " 0 ;1");
     } else {
-        buffer.emit("ret " + ret_type);
+        buffer.emit("ret " + ret_type + ";2");
     }
     buffer.emit("}");
 }
@@ -477,7 +477,7 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
             } else if (data_type == "BOOL") {
                 tmp_reg = getBoolReg(explist->exp_list[i], false);
             } else if (data_type == "BYTE") {
-                buffer.emit(tmp_reg + " = add i8 " + explist->exp_list[i]->store_loc + ", 0");
+                buffer.emit(tmp_reg + " = add i8 " + explist->exp_list[i]->store_loc + ", 0 ;1");
             } else if (data_type == "INT") {
                 buffer.emit(tmp_reg + " = add i32 " + explist->exp_list[i]->store_loc + ", 0");
             } else if (data_type == "STRING") {
@@ -642,7 +642,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             }
         }
         this->store_loc = reg_m.getNewRegister();
-        buffer.emit(this->store_loc + " = " + op + " " + typeLLVM + " " + exp1_loc + ", " + exp2_loc);
+        buffer.emit(this->store_loc + " = " + op + " " + typeLLVM + " " + exp1_loc + ", " + exp2_loc + ";5");
 //            start_line = buffer.emit("br label @ ;start_line");
 //            start_label = buffer.genLabel();
 
@@ -812,8 +812,8 @@ Statements::Statements(Statements *statements, LabelM *label_m, Statement *state
     CodeBuffer &buffer = CodeBuffer::instance();
     buffer.bpatch(statements->nextlist, label_m->label);
     nextlist = statement->nextlist;
-    breaklist = statement->breaklist;
-    continuelist = statement->continuelist;
+    breaklist = buffer.merge(statements->breaklist, statement->breaklist);
+    continuelist = buffer.merge(statements->continuelist, statement->continuelist);
 }
 
 /* OpenStatement Implementation */
@@ -1012,7 +1012,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
                 buffer.emit(";DEBUG sending false here!");
                 expression->store_loc = getBoolReg(expression, false);
             }
-            buffer.emit("ret " + ret_type + " " + expression->store_loc);
+            buffer.emit("ret " + ret_type + " " + expression->store_loc + ";3");
         }
 
 //        buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
@@ -1067,7 +1067,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             if (bool_size)
                 buffer.emit(expression_reg + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
             else
-                buffer.emit(expression_reg + " = add i8 " + expression->store_loc + ", 0");
+                buffer.emit(expression_reg + " = add i8 " + expression->store_loc + ", 0 ;2");
         } else if (data_type == "INT") {
             buffer.emit(expression_reg + " = add i32 " + expression->store_loc + ", 0;2"); //add zero
         } else if (data_type == "STRING") {
@@ -1159,12 +1159,12 @@ string getBoolReg(Expression* expression, bool bool_size) {
     int bp_start = buffer.emit("br label @ ;5");
     string reg_true_val = reg_alloca.getNewRegister();
     string label_true_val = buffer.genLabel();
-    buffer.emit(reg_true_val + " = add " + size + " 1, 0");
+    buffer.emit(reg_true_val + " = add " + size + " 1, 0 ;3");
     int bp_fin_1 = buffer.emit("br label @ ;6");
 
     string reg_false_val = reg_alloca.getNewRegister();
     string label_false_val = buffer.genLabel();
-    buffer.emit(reg_false_val + " = add " + size + " 0, 0");
+    buffer.emit(reg_false_val + " = add " + size + " 0, 0 ;4");
     int bp_fin_2 = buffer.emit("br label @ ;7");
 
 
