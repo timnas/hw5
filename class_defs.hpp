@@ -121,7 +121,7 @@ public:
     int end_line;
     string end_label;
 
-    bool is_val_calc;
+    bool is_val_calc = false;
     vector<pair<int, BranchLabelIndex>> truelist;
     vector<pair<int, BranchLabelIndex>> falselist;
 
@@ -278,6 +278,7 @@ void newScope();
 void newWhileScope();
 void isBool(int line_num);
 void printScopesSymbols();
+void addExpToList(Expression* expression);
 bool varIdTaken(string id_name, TableType *id_type = nullptr);
 bool IDInGlobalScope();
 void addVarToStack(string name, string type);

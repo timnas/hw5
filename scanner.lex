@@ -40,7 +40,10 @@ lbrace      (\{)
 rbrace      (\})
 assign      (=)
 relop       (!=|==|[<>]=?|<>)
-binop       ([+*-\/])
+mul         ("*")
+div         ("/")
+add         ("+")
+sub         ("-")
 num         ([1-9]{digit}*)|0
 
 
@@ -70,10 +73,12 @@ num         ([1-9]{digit}*)|0
 {rbrace}                        {yylval = new ASTNode(yytext, yylineno); return RBRACE;}
 {assign}                        {yylval = new ASTNode(yytext, yylineno); return ASSIGN;}
 {relop}                         {yylval = new ASTNode(yytext, yylineno); return RELOP;}
-{binop}                         {yylval = new ASTNode(yytext, yylineno); return BINOP;}
+{mul}                           {yylval = new ASTNode(yytext, yylineno); return MUL;}
+{div}                           {yylval = new ASTNode(yytext, yylineno); return DIV;}
+{add}                           {yylval = new ASTNode(yytext, yylineno); return ADD;}
+{sub}                           {yylval = new ASTNode(yytext, yylineno); return SUB;}
 {letter}+({letter}|{digit})*    {yylval = new ASTNode(yytext, yylineno); return ID;}
 {num}                           {yylval = new ASTNode(yytext, yylineno);return NUM;}
-
 \"([^\n\r\"\\]|\\[rnt"\\])+\"   {yylval = new ASTNode(yytext, yylineno); return STRING;}
 [ \n\r\t]                       ;
 "//"[^\r\n]*[\r|\n|\r\n]?       ;                                    // comment- do nothing

@@ -42,7 +42,8 @@
 %left OR
 %left AND
 %left RELOP;
-%left BINOP
+%left ADD SUB
+%left MUL DIV
 %left LPAREN
 %left RPAREN
 %left LBRACE
@@ -124,14 +125,17 @@ Call: ID LPAREN ExpList RPAREN {$$ = new Expression($1, dynamic_cast<ExpList*>($
       | ID LPAREN RPAREN {$$ = new Expression($1);} //rule 29
 
 ExpList: Exp {$$ = new ExpList(dynamic_cast<Expression*>($1));} //rule 30
-         | Exp COMMA ExpList {$$ = new ExpList(dynamic_cast<Expression*>($1), dynamic_cast<ExpList*>($3));} //rule 31
+         | Exp COMMA {addExpToList(dynamic_cast<Expression*>($1));} ExpList {$$ = new ExpList(dynamic_cast<Expression*>($1), dynamic_cast<ExpList*>($4));}  //rule 31
 
 Type: INT {$$ = $1;} //rule 32
       | BYTE {$$ = $1;} //rule 33
       | BOOL {$$ = $1;} //rule 34
 
 Exp: LPAREN Exp RPAREN {$$ = $2;} //rule 35
-     | Exp BINOP Exp {$$ = new Expression($2, "int", "binop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 36
+     | Exp MUL Exp {$$ = new Expression($2, "int", "binop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 36
+     | Exp DIV Exp {$$ = new Expression($2, "int", "binop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 36
+     | Exp ADD Exp {$$ = new Expression($2, "int", "binop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 36
+     | Exp SUB Exp {$$ = new Expression($2, "int", "binop", dynamic_cast<Expression*>($1), dynamic_cast<Expression*>($3));} //rule 36
      | ID {$$ = new Expression($1, "id"); } //rule 37
      | Call {$$ = $1;} //rule 38 TODO: CHECK!!!
      | NUM {$$ = new Expression($1, "int");} //rule 39

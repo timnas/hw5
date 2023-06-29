@@ -102,16 +102,18 @@ string LLVMGetType (string type){
 }
 
 void FuncDecl::emit(ASTNode *node) {
+    CodeBuffer &buffer = CodeBuffer::instance();
     string ret_type = LLVMGetType(this->ret_type_str);
     string parameter_list = "";
-    if (this->arg_types.size() > 0){
+    if (this->arg_types.size() > 0) {
+        buffer.emit(";DEBUG inside funcdecl emit");
         for(int i = 0; i < this->arg_types.size() - 1; i++) {
             parameter_list += LLVMGetType(this->arg_types.at(i));
             parameter_list += ", ";
         }
         parameter_list += LLVMGetType(this->arg_types.at(this->arg_types.size()-1));
     }
-    CodeBuffer &buffer = CodeBuffer::instance();
+
     buffer.emit("define " + ret_type + " @" + node->value + "(" + parameter_list + ") {");
     RegisterManager &reg_m = RegisterManager::registerAlloc();
     string func_alloca_reg = reg_m.getNewRegister();
@@ -259,7 +261,7 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
     if(g_exp_type == "void" || g_exp_type == "VOID") {
         buffer.emit("call void @" + func_entry.name + "()");
     } else {
-        buffer.emit(reg + " call " + LLVMGetType(g_exp_type) + " @" + func_entry.name + "()");
+        buffer.emit(reg + " = call " + LLVMGetType(g_exp_type) + " @" + func_entry.name + "()");
         store_loc = reg;
     }
     if (g_exp_type == "bool" || g_exp_type == "BOOL") {
@@ -457,19 +459,21 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
         if (is_cast[i]) {
             args_str += "i32";
             if (explist->exp_list[i]->is_val_calc) {
-                buffer.emit(tmp_reg + " = add i1 " + explist->exp_list[i]->store_loc + ", 0");
+                buffer.emit(tmp_reg + " = add i1 " + explist->exp_list[i]->store_loc + ", 0; is cast is true");
             }
             buffer.emit(tmp_reg + " = zext i8 " + explist->exp_list[i]->store_loc + " to i32");
             args_str += tmp_reg;
             args_str += ", ";
 
         } else {
-            buffer.emit(";DEBUG: " + explist->exp_list[i]->value + "'s store loc is- " + explist->exp_list[i]->store_loc);
+            buffer.emit(
+                    ";DEBUG: " + explist->exp_list[i]->value + "'s store loc is- " + explist->exp_list[i]->store_loc);
             string data_type = getDataTypeRepresentation(explist->exp_list[i]->type_name);
+//            buffer.emit(";DEBUG data type is: " + data_type);
             args_str += LLVMGetType(params[i]);
             args_str += " ";
             if (explist->exp_list[i]->is_val_calc) {
-                buffer.emit(tmp_reg + " = add i1 " + explist->exp_list[i]->store_loc + ", 0");
+                buffer.emit(tmp_reg + " = add i1 " + explist->exp_list[i]->store_loc + ", 0; in exp ctor");
             } else if (data_type == "BOOL") {
                 tmp_reg = getBoolReg(explist->exp_list[i], false);
             } else if (data_type == "BYTE") {
@@ -483,11 +487,12 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
             args_str += tmp_reg;
             args_str += ", ";
         }
+    }
 
         args_str = args_str.substr(0, args_str.size() - 2);
 
         if (func_entry.type.func_decl->ret_type_str == "VOID") {
-            buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+            buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")"); //TODO maybe "call void @" ...?
         } else {
             buffer.emit(
                     reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
@@ -502,14 +507,14 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
         }
 //    end_line = buffer.emit("br label @ ;end_line");
 //    end_label = buffer.genLabel();
-    }
+
 }
 
 Expression::Expression(ASTNode* node, string operation, Expression* expression) : ASTNode(expression->value, node->line_no) {
     CodeBuffer &buffer = CodeBuffer::instance();
     RegisterManager &reg_m = RegisterManager::registerAlloc();
-    if (operation == "not"){
-        if (!(expression->type_name == "bool")){
+    if (operation == "not") {
+        if (!(expression->type_name == "bool")) {
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -520,10 +525,10 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
     }
     string reg = expression->store_loc;
     if (operation == "cast" && (expression->type_name == "int" || expression->type_name == "byte")){
-        if (node->value == "byte"){
+        if (node->value == "byte") {
             this->type_name = "byte";
             g_exp_type = this->type_name;
-            if (expression->type_name == "int"){
+            if (expression->type_name == "int") {
                 reg = reg_m.getNewRegister();
                 buffer.emit(reg + " = trunc i32 " + expression->store_loc + " to i8");
             }
@@ -618,8 +623,12 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             int bp = buffer.emit("br i1 " + reg + ", label @, label @");
 
             string true_label = buffer.genLabel();
-            buffer.emit(
-                    "call void (i8*) @print(i8* getelementptr ([23 x i8], [23 x i8]* @.div_by_zero_err_msg, i32 0, i32 0))");
+//
+//            buffer.emit("%ptr = getelementptr [23 x i8], [23 x i8]* @.div_zero_err_message, i32 0, i32 0");
+//            buffer.emit("call void @print(i8* %ptr)");
+//            buffer.emit("call void @exit(i32 0)");
+
+            buffer.emit("call void (i8*) @print(i8* getelementptr ([23 x i8], [23 x i8]* @.div_by_zero_err_msg, i32 0, i32 0))");
             buffer.emit("call void (i32) @exit(i32 0)");
             int br = buffer.emit("br label @ ;8");
             string false_label = buffer.genLabel();
@@ -653,12 +662,12 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 
         this->type_name = "bool";
         g_exp_type = this->type_name;
-        if (exp1->type_name == "byte" && exp2->type_name == "int"){
+        if (exp1->type_name == "byte" && exp2->type_name == "int") {
             string ext_exp1 = reg_m.getNewRegister();
             buffer.emit(ext_exp1 + " = zext i8 " + exp1_loc + " to i32");
             exp1_loc = ext_exp1;
         }
-        else if (exp2->type_name == "byte" && exp1->type_name == "int"){
+        else if (exp2->type_name == "byte" && exp1->type_name == "int") {
             string ext_exp2 = reg_m.getNewRegister();
             buffer.emit(ext_exp2 + " = zext i8 " + exp2_loc + " to i32");
             exp2_loc = ext_exp2;
@@ -723,14 +732,14 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 //    }
 //}
 Expression::Expression(ASTNode *node, string type_name, string operation, Expression *exp1, Expression *exp2, LabelM *label_m) : ASTNode(type_name, node->line_no){
-    if (operation == "and" || operation == "or"){
+    CodeBuffer &buffer = CodeBuffer::instance();
+    if (operation == "and" || operation == "or") {
         if (exp1->type_name != "bool" || exp2->type_name != "bool"){
             output::errorMismatch(node->line_no);
             exit(0);
         }
         this->type_name = "bool";
         g_exp_type = "bool";
-        CodeBuffer &buffer = CodeBuffer::instance();
         buffer.emit(";and or");
 
 //        start_line = buffer.emit("br label @ ;start_line");
@@ -741,12 +750,12 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 //        buffer.bpatch(buffer.makelist(make_pair(exp2->end_line, FIRST)), exp2->end_label);
 
 
-        if (node->value == "or"){
+        if (node->value == "or") {
             buffer.bpatch(exp1->falselist, label_m->label);
             this->truelist = buffer.merge(exp1->truelist, exp2->truelist);
             this->falselist = exp2->falselist;
         }
-        else if (node->value == "and"){
+        else if (node->value == "and") {
             buffer.bpatch(exp1->truelist, label_m->label);
             this->truelist = exp2->truelist;
             this->falselist = buffer.merge(exp1->falselist, exp2->falselist);
@@ -755,15 +764,20 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 //        end_label = buffer.genLabel();
     }
 }
+
+
 /* ExpList Implementation */
 
 ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression->line_no) {
-    if (expression->type_name == "bool") {
+    CodeBuffer &buffer = CodeBuffer::instance();
+    buffer.emit(";DEBUG in explist ctor. type is: " + expression->type_name);
+    if (getDataTypeRepresentation(expression->type_name) == "BOOL") {
         expression->store_loc = getBoolReg(expression, false);
         expression->val_calc();
+        buffer.emit(";DEBUG changed is_calc to true for exp: " + expression->value);
     }
     exp_list.push_back(expression);
-    CodeBuffer &buffer = CodeBuffer::instance();
+
 //    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
 //    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
 }
@@ -959,7 +973,7 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
 
     string rh_data_type = getDataTypeRepresentation(rh_type);
     if (expression->is_val_calc) {
-        buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0");
+        buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0; after calc");
     }
     if (rh_data_type == "BOOL") {
         buffer.emit(";sending i1 to getboolreg");
@@ -1044,7 +1058,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
 
         string data_type = getDataTypeRepresentation(expression->type_name);
         if (expression->is_val_calc) {
-            buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0");
+            buffer.emit(expression_reg + " = add i1 " + expression->store_loc + ", 0; in ss ctor");
         }
         if (data_type == "BOOL") {
             buffer.emit(";sending i1 to getboolreg- in somestatement c'tor");
@@ -1127,6 +1141,13 @@ ExitM::ExitM() : ASTNode("ExitM", -1){
 
 /* Auxiliaries Implementation */
 
+void addExpToList(Expression* expression) {
+    if (getDataTypeRepresentation(expression->type_name) == "BOOL") {
+        expression->store_loc = getBoolReg(expression, false);
+        expression->val_calc();
+    }
+}
+
 string getBoolReg(Expression* expression, bool bool_size) {
     CodeBuffer &buffer = CodeBuffer::instance();
     RegisterManager &reg_alloca = RegisterManager::registerAlloc();
@@ -1192,6 +1213,7 @@ void initLLVM(){
     buffer.emit("");
     buffer.emit("declare i32 @printf(i8*, ...)");
     buffer.emit("declare void @exit(i32)");
+    buffer.emit("@.div_by_zero_err_msg  = constant [23 x i8] c\"Error division by zero\\00\"");
     buffer.emit("@.int_specifier = constant [4 x i8] c\"%d\\0A\\00\"");
     buffer.emit("@.str_specifier = constant [4 x i8] c\"%s\\0A\\00\"");
     buffer.emit("define void @printi(i32) {");
