@@ -266,7 +266,7 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
     }
     if (g_exp_type == "bool" || g_exp_type == "BOOL") {
         string tmp = reg_m.getNewRegister(); ///?
-        int cond_line = buffer.emit("br i1 " + reg + ", label @, label @");
+        int cond_line = buffer.emit("br i1 " + reg + ", label @, label @ ;1");
         truelist = buffer.makelist(make_pair(cond_line, FIRST));
         falselist = buffer.makelist(make_pair(cond_line, SECOND));
     }
@@ -318,7 +318,7 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             this->store_loc = "%" + to_string(param_index);
 
             if (type_name == "bool") {
-                int tmp_br = buffer.emit("br i1 " + store_loc + ", label @, label @");
+                int tmp_br = buffer.emit("br i1 " + store_loc + ", label @, label @ ;2");
                 truelist.push_back(make_pair(tmp_br, FIRST));
                 falselist.push_back(make_pair(tmp_br, SECOND));
             }
@@ -333,7 +333,7 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             if (type_name == "bool") {
                 string clause = reg_m.getNewRegister();
                 buffer.emit(clause + " = trunc i32 " + store_loc + " to i1");
-                int tmp_br = buffer.emit("br i1 " + clause + ", label @, label @");
+                int tmp_br = buffer.emit("br i1 " + clause + ", label @, label @ ;3");
 
                 truelist.push_back(make_pair(tmp_br, FIRST));
                 falselist.push_back(make_pair(tmp_br, SECOND));
@@ -498,13 +498,15 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
                     reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
         }
 
-        if (func_entry.type.func_decl->ret_type_str == "bool") {
-            int br = buffer.emit("br i1 " + reg + ", label @, label @");
+        if (func_entry.type.func_decl->ret_type_str == "bool") { ///TODO: deleted this. not sure
+            int br = buffer.emit("br i1 " + reg + ", label @, label @ ;4");
             this->truelist = buffer.makelist(make_pair(br, FIRST));
             this->falselist = buffer.makelist(make_pair(br, SECOND));
         } else {
             this->store_loc = reg;
         }
+
+     //   this->store_loc = reg;
 //    end_line = buffer.emit("br label @ ;end_line");
 //    end_label = buffer.genLabel();
 
@@ -620,7 +622,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             //check if dividing by zero
             string reg = reg_m.getNewRegister();
             buffer.emit(reg + " = icmp eq " + typeLLVM + " 0, " + exp2_loc);
-            int bp = buffer.emit("br i1 " + reg + ", label @, label @");
+            int bp = buffer.emit("br i1 " + reg + ", label @, label @ ;5");
 
             string true_label = buffer.genLabel();
 //
@@ -697,7 +699,7 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 
         this->store_loc = reg_m.getNewRegister();
         buffer.emit(this->store_loc + " = icmp " + op + " " + typeLLVM + " " + exp1_loc + ", " + exp2_loc);
-        int br = buffer.emit("br i1 " + this->store_loc + ", label @, label @");
+        int br = buffer.emit("br i1 " + this->store_loc + ", label @, label @ ;6");
         this->truelist = buffer.makelist(make_pair(br, FIRST));
         this->falselist = buffer.makelist(make_pair(br, SECOND));
 //        end_line = buffer.emit("br label @ ;end_line");
@@ -846,12 +848,19 @@ OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, ASTNode* 
 
 OpenStatement::OpenStatement(Expression* expression, LabelM* label_m1, LabelM* label_m2, ASTNode* node) : ASTNode("OpenStatement", expression->line_no) {
     CodeBuffer &buffer = CodeBuffer::instance();
+
+//    if (expression->type_name == "bool" || expression->type_name == "BOOL"){
+//        int br = buffer.emit("br i1 " + expression->store_loc + ", label @, label @ ;4");
+//        expression->truelist = buffer.makelist(make_pair(br, FIRST));
+//        expression->falselist = buffer.makelist(make_pair(br, SECOND));
+//    }
+
     buffer.bpatch(node->nextlist, label_m1->label);
     buffer.bpatch(expression->truelist, label_m2->label);
-    nextlist = buffer.merge(expression->falselist, node->breaklist);
 
     buffer.emit("br label %" + label_m1->label+ ";9");
     buffer.bpatch(node->continuelist, label_m1->label); //TODO: TIMNA-ADD
+    nextlist = buffer.merge(expression->falselist, node->breaklist);
 
 //    buffer.bpatch(buffer.makelist(make_pair(expression->start_line, FIRST)), expression->start_label);
 //    buffer.bpatch(buffer.makelist(make_pair(expression->end_line, FIRST)), expression->end_label);
@@ -990,6 +999,14 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     buffer.emit("; DEBUG before store i32. type is: " + rh_data_type);
     buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
 
+    if (expression->type_name == "bool")
+    {
+        int br = buffer.emit("br label @");
+        string label = buffer.genLabel();
+        buffer.bpatch(expression->truelist, label);
+        buffer.bpatch(expression->falselist, label);
+        buffer.bpatch(buffer.makelist(make_pair(br, FIRST)), label);
+    }
 
 }
 
@@ -1078,13 +1095,14 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
         buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                             to_string(id_entry.offset));
         buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
+
     }
 }
 
 SomeStatement::SomeStatement(ASTNode *node) : ASTNode("SomeStatement", node->line_no) //v
 {
     CodeBuffer &buffer = CodeBuffer::instance();
-    if (node->value == "call" || node->value == "{") {
+    if (node->value == "call") {
         // Do nothing for "call" or "{"
 
         //TODO: perhaps need to save truelist and falselist. return here!
