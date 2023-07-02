@@ -64,9 +64,9 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
             output::errorFuncNoOverride(node->line_no, g_function_name);
             exit(0);
         } else if ((isOverride && override_func.type.func_decl->isOverride
-                   && arg_types.size() == override_func.type.func_decl->arg_types.size()
-                   && arg_types == override_func.type.func_decl->arg_types
-                   && ret_type_str == override_func.type.func_decl->ret_type_str)
+                    && arg_types.size() == override_func.type.func_decl->arg_types.size()
+                    && arg_types == override_func.type.func_decl->arg_types
+                    && ret_type_str == override_func.type.func_decl->ret_type_str)
                    || ( !isOverride && !override_func.type.func_decl->isOverride)) { // both aren't override
             output::errorDef(node->line_no, g_function_name);
             exit(0);
@@ -250,7 +250,7 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
         for (string type : params) {
             arg_caps.push_back(getDataTypeRepresentation(type));
         }
-        if (params.size() != 0){
+        if (params.size() != 0){ //?
             output::errorPrototypeMismatch(expression->line_no, expression->value);
             exit(0);
         }
@@ -265,7 +265,6 @@ Expression::Expression(ASTNode* expression) : ASTNode("Call", expression->line_n
         store_loc = reg;
     }
     if (g_exp_type == "bool" || g_exp_type == "BOOL") {
-        string tmp = reg_m.getNewRegister(); ///?
         int cond_line = buffer.emit("br i1 " + reg + ", label @, label @ ;1");
         truelist = buffer.makelist(make_pair(cond_line, FIRST));
         falselist = buffer.makelist(make_pair(cond_line, SECOND));
@@ -299,8 +298,8 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
         bool found = false;
         TableEntry id_entry;
 
-        buffer.emit(";DEBUG id is: " + node->value);
-//        buffer.emit("; scope size is: " + to_string(current_table->table_entries_vec.size()));
+        // buffer.emit(";DEBUG id is: " + node->value);
+////        buffer.emit("; scope size is: " + to_string(current_table->table_entries_vec.size()));
         Table *current_table;
         for (int i = tables_stack.size()-1; i > 0; i--) {
             current_table = &tables_stack[i];
@@ -327,7 +326,7 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
             this->store_loc = reg_m.getNewRegister();
             string address = reg_m.getNewRegister();
             buffer.emit(address + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
-                                to_string(id_entry.offset) + ";DEBUG3");
+                        to_string(id_entry.offset) + ";DEBUG3");
             buffer.emit(this->store_loc + " = load i32, i32* " + address);
 
             if (type_name == "bool") {
@@ -362,7 +361,7 @@ Expression::Expression(ASTNode* node, string type) : ASTNode(node->value, node->
 //        end_label = buffer.genLabel();
     }
     else if (type_name == "int") {
-        buffer.emit(";DEBUG adding an int with node value: " + this->value);
+//        buffer.emit(";DEBUG adding an int with node value: " + this->value);
         this->store_loc = this->value;
 //        start_line = buffer.emit("br label @ ;start_line");
 //        start_label = buffer.genLabel();
@@ -489,24 +488,24 @@ Expression::Expression(ASTNode* expression, ExpList* explist) : ASTNode("Call", 
         }
     }
 
-        args_str = args_str.substr(0, args_str.size() - 2);
+    args_str = args_str.substr(0, args_str.size() - 2);
 
-        if (func_entry.type.func_decl->ret_type_str == "VOID") {
-            buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")"); //TODO maybe "call void @" ...?
-        } else {
-            buffer.emit(
-                    reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
-        }
+    if (func_entry.type.func_decl->ret_type_str == "VOID") {
+        buffer.emit("call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")"); //TODO maybe "call void @" ...?
+    } else {
+        buffer.emit(
+                reg + " = call " + LLVMGetType(this->type_name) + " @" + func_entry.name + "(" + args_str + ")");
+    }
 
-        if (func_entry.type.func_decl->ret_type_str == "bool") { ///TODO: deleted this. not sure
-            int br = buffer.emit("br i1 " + reg + ", label @, label @ ;4");
-            this->truelist = buffer.makelist(make_pair(br, FIRST));
-            this->falselist = buffer.makelist(make_pair(br, SECOND));
-        } else {
-            this->store_loc = reg;
-        }
+    if (func_entry.type.func_decl->ret_type_str == "bool") { ///TODO: deleted this. not sure
+        int br = buffer.emit("br i1 " + reg + ", label @, label @ ;4");
+        this->truelist = buffer.makelist(make_pair(br, FIRST));
+        this->falselist = buffer.makelist(make_pair(br, SECOND));
+    } else {
+        this->store_loc = reg;
+    }
 
-     //   this->store_loc = reg;
+    //   this->store_loc = reg;
 //    end_line = buffer.emit("br label @ ;end_line");
 //    end_label = buffer.genLabel();
 
@@ -516,7 +515,7 @@ Expression::Expression(ASTNode* node, string operation, Expression* expression) 
     CodeBuffer &buffer = CodeBuffer::instance();
     RegisterManager &reg_m = RegisterManager::registerAlloc();
     if (operation == "not") {
-        if (!(expression->type_name == "bool")) {
+        if (!(getDataTypeRepresentation(expression->type_name) == "BOOL")) {
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -582,8 +581,8 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
             g_exp_type = this->type_name;
         }
         else if (!((exp1->type_name == "int" && exp2->type_name == "int") ||
-                (exp1->type_name == "int" && exp2->type_name == "byte") ||
-                (exp1->type_name == "byte" && exp2->type_name == "int"))) {
+                   (exp1->type_name == "int" && exp2->type_name == "byte") ||
+                   (exp1->type_name == "byte" && exp2->type_name == "int"))) {
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -650,8 +649,10 @@ Expression::Expression(ASTNode *node, string type_name, string operation, Expres
 
     }
     else if (operation == "relop") {
+//        std::cout << "exp1: " << exp1->type_name << ", exp2: " << exp2->type_name << std::endl;
         if (!((exp1->type_name == "int" || exp1->type_name == "byte") &&
-            (exp2->type_name == "int" || exp2->type_name == "byte"))) {
+              (exp2->type_name == "int" || exp2->type_name == "byte"))){
+            //buffer.emit(";DEBUG ERROR IS IN HERE");
             output::errorMismatch(node->line_no);
             exit(0);
         }
@@ -776,7 +777,7 @@ ExpList::ExpList(Expression* expression) : ASTNode(expression->value, expression
     if (getDataTypeRepresentation(expression->type_name) == "BOOL") {
         expression->store_loc = getBoolReg(expression, false);
         expression->val_calc();
-        buffer.emit(";DEBUG changed is_calc to true for exp: " + expression->value);
+//        buffer.emit(";DEBUG changed is_calc to true for exp: " + expression->value);
     }
     exp_list.push_back(expression);
 
@@ -939,7 +940,7 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id) : ASTNode("SomeStatemen
     TableEntry entry = tables_stack.back().table_entries_vec.back();
     string reg = reg_m.getNewRegister();
     buffer.emit(reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
-                                                                                                    to_string(entry.offset) + ";DEBUG1");
+                to_string(entry.offset) + ";DEBUG1");
     buffer.emit("store i32 0, i32* " + reg);
 }
 
@@ -962,7 +963,7 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
         exit(0);
     }
 
-     else if (lh_type != rh_type && !(lh_type == "int" && rh_type == "byte")) {
+    else if (lh_type != rh_type && !(lh_type == "int" && rh_type == "byte")) {
         output::errorMismatch(id->line_no);
         exit(0);
     }
@@ -996,7 +997,7 @@ SomeStatement::SomeStatement(ASTNode *type, ASTNode *id, Expression *expression)
     }
     buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
                 to_string(entry.offset) + ";DEBUG2");
-    buffer.emit("; DEBUG before store i32. type is: " + rh_data_type);
+//    buffer.emit("; DEBUG before store i32. type is: " + rh_data_type);
     buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
 
     if (expression->type_name == "bool")
@@ -1028,6 +1029,12 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
             if (ret_type == "i1") {
                 buffer.emit(";DEBUG sending false here!");
                 expression->store_loc = getBoolReg(expression, false);
+            } else if (ret_type == "i32") {
+                if (getDataTypeRepresentation(expression->type_name) == "BYTE") {
+                    string tmp = reg_m.getNewRegister();
+                    buffer.emit(tmp + " = zext i8 " + expression->store_loc + " to i32"); //zero extension
+                    expression->store_loc = tmp;
+                }
             }
             buffer.emit("ret " + ret_type + " " + expression->store_loc + ";3");
         }
@@ -1093,7 +1100,7 @@ SomeStatement::SomeStatement(string str, Expression *expression) : ASTNode("Some
 
 
         buffer.emit(ptr_reg + " = getelementptr [50 x i32], [50 x i32]* " + tables_stack.back().scope_reg + ", i32 0, i32 " +
-                            to_string(id_entry.offset));
+                    to_string(id_entry.offset));
         buffer.emit("store i32 " + expression_reg + ", i32* " + ptr_reg);
 
     }
@@ -1206,7 +1213,7 @@ string getBoolReg(Expression* expression, bool bool_size) {
 }
 
 void validateMain(){
-  //  std::cout<< "DEBUG validateMain" <<std::endl;
+    //  std::cout<< "DEBUG validateMain" <<std::endl;
     Table top_table = tables_stack[0];
     int size = top_table.table_entries_vec.size();
     TableEntry current_entry;
@@ -1235,17 +1242,17 @@ void initLLVM(){
     buffer.emit("@.int_specifier = constant [4 x i8] c\"%d\\0A\\00\"");
     buffer.emit("@.str_specifier = constant [4 x i8] c\"%s\\0A\\00\"");
     buffer.emit("define void @printi(i32) {");
-    buffer.emit("%spec_ptr = getelementptr [4 x i8], [4 x i8]* @.int_specifier, i32 0, i32 0");
-    buffer.emit("call i32 (i8*, ...) @printf(i8* %spec_ptr, i32 %0)");
-    buffer.emit("ret void");
+    buffer.emit("   %spec_ptr = getelementptr [4 x i8], [4 x i8]* @.int_specifier, i32 0, i32 0");
+    buffer.emit("   call i32 (i8*, ...) @printf(i8* %spec_ptr, i32 %0)");
+    buffer.emit("   ret void");
     buffer.emit("}");
     buffer.emit("define void @print(i8*) {");
-    buffer.emit("%spec_ptr = getelementptr [4 x i8], [4 x i8]* @.str_specifier, i32 0, i32 0");
-    buffer.emit("call i32 (i8*, ...) @printf(i8* %spec_ptr, i8* %0)");
-    buffer.emit("ret void");
+    buffer.emit("   %spec_ptr = getelementptr [4 x i8], [4 x i8]* @.str_specifier, i32 0, i32 0");
+    buffer.emit("   call i32 (i8*, ...) @printf(i8* %spec_ptr, i8* %0)");
+    buffer.emit("   ret void");
     buffer.emit("}");
-   // buffer.emit("");
-   // buffer.emit("");
+    // buffer.emit("");
+    // buffer.emit("");
 }
 
 void initGlobalScope()
