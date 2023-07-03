@@ -37,9 +37,15 @@ void CodeBuffer::bpatch(const vector<pair<int,BranchLabelIndex>>& address_list, 
 }
 
 void CodeBuffer::printCodeBuffer(){
-	for (std::vector<string>::const_iterator it = buffer.begin(); it != buffer.end(); ++it) 
+    size_t found;
+	for (std::vector<string>::const_iterator it = buffer.begin(); it != buffer.end(); ++it)
 	{
-		cout << *it << endl;
+        found = (*it).find("label @");
+        if (found != std::string::npos) {
+            continue;
+        } else {
+            cout << *it << endl;
+        }
     }
 }
 
