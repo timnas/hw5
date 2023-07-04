@@ -47,6 +47,7 @@ public:
 class FuncDecl : public ASTNode
 {
 public:
+    string special_name;
     RetType *ret_type;
     string ret_type_str;
     bool isOverride;

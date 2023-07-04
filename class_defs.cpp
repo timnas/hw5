@@ -10,6 +10,7 @@ bool bool_size;
 vector<Table> tables_stack;
 vector<int> offsets_stack;
 const int BYTE_MAX_SIZE = 255;
+int counter = 0;
 
 
 /* ASTNode Implementation */
@@ -27,8 +28,10 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
     }
     if (is_override->value == "override_flag_true") {
         isOverride = true;
+        special_name = node->value + "_" + to_string(counter++);
     } else {
         isOverride = false;
+        special_name = node->value;
     }
     arg_types = {};
 
@@ -73,11 +76,12 @@ FuncDecl::FuncDecl(RetType *ret_type, ASTNode *node, Formals *formals, ASTNode* 
         }
     }
     TableType func_type(true, this);
-    TableEntry func_entry(g_function_name, func_type, 0);
+//    if(isOverride) {
+//        g_function_name = special_name;
+//    }
+    TableEntry func_entry(special_name, func_type, 0);
     tables_stack[0].table_entries_vec.push_back(func_entry);
-
     emit(node);
-
 }
 
 string LLVMGetType (string type){
@@ -114,7 +118,7 @@ void FuncDecl::emit(ASTNode *node) {
         parameter_list += LLVMGetType(this->arg_types.at(this->arg_types.size()-1));
     }
 
-    buffer.emit("define " + ret_type + " @" + node->value + "(" + parameter_list + ") {");
+    buffer.emit("define " + ret_type + " @" + this->special_name + "(" + parameter_list + ") {");
     RegisterManager &reg_m = RegisterManager::registerAlloc();
     string func_alloca_reg = reg_m.getNewRegister();
     Table &func_scope = tables_stack.back();
@@ -1212,7 +1216,16 @@ string getBoolReg(Expression* expression, bool bool_size) {
     return reg_final;
 }
 
-void validateMain(){
+string stripString(string str) {
+    size_t underscore_index = str.find_last_of('_');
+    if (underscore_index != string::npos) {
+//        cout << "inside strip, underscore_index: " << underscore_index << ", str: " << str << ", strip: " << str.substr(0, underscore_index) << endl;
+        return str.substr(0, underscore_index);
+    }
+    return str;
+}
+
+void validateMain() {
     //  std::cout<< "DEBUG validateMain" <<std::endl;
     Table top_table = tables_stack[0];
     int size = top_table.table_entries_vec.size();
@@ -1355,6 +1368,8 @@ void addVarToStack(string name, string type)
     offsets_stack.back() += 1;
 }
 
+
+
 // added explist, probably not the best.. need to debug
 TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, bool* found, bool *ambiguous) {
     Table g_table = tables_stack[0];
@@ -1362,23 +1377,23 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
     TableEntry found_entry;
     for (int i = 0; i <  g_table.table_entries_vec.size(); i++) {
         current_entry = g_table.table_entries_vec[i];
-        if (current_entry.type.function_type && current_entry.name == node->value) {
+//        cout << "name: " << current_entry.name << ", strip: " << stripString(current_entry.name) << ", node: " << node->value << endl;
+        if (current_entry.type.function_type && stripString(current_entry.name) == node->value) {
             if(current_entry.type.func_decl->isOverride) {
-                if(explist) {
+                if (explist) {
                     if (current_entry.type.func_decl->arg_types.size() == explist->exp_list.size()) {
-
                         bool match = true;
-                        for (int i=0; i< explist->exp_list.size() ; i++){
-                            if (current_entry.type.func_decl->arg_types.at(i) != explist->exp_list.at(i)->type_name){
-                                if (!((current_entry.type.func_decl->arg_types.at(i) == "int" && explist->exp_list.at(i)->type_name == "byte"))){
+                        for (int i = 0; i < explist->exp_list.size(); i++) {
+                            if (current_entry.type.func_decl->arg_types.at(i) != explist->exp_list.at(i)->type_name) {
+                                if (!((current_entry.type.func_decl->arg_types.at(i) == "int" &&
+                                       explist->exp_list.at(i)->type_name == "byte"))) {
                                     match = false;
-
 
                                 }
                             }
                         }
-                        if (match){
-                            if (*found){
+                        if (match) {
+                            if (*found) {
                                 *ambiguous = true;
                                 return found_entry;
                             }
@@ -1386,8 +1401,7 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
                             found_entry = current_entry;
                         }
                     }
-                }
-                else if (funcargs) {
+                } else if (funcargs) {
                     if (current_entry.type.func_decl->arg_types.size() == funcargs->args_list.size()) {
                         if (*found) {
                             *ambiguous = true;
@@ -1396,9 +1410,8 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
                         *found = true;
                         found_entry = current_entry;
                     }
-                }
-                else { //both null
-                    if (current_entry.type.func_decl->arg_types.size() == 0){
+                } else { //both null
+                    if (current_entry.type.func_decl->arg_types.size() == 0) {
                         *found = true;
                         return current_entry;
                     }
@@ -1410,7 +1423,7 @@ TableEntry getFunctionEntry(ASTNode *node,ExpList* explist, FuncArgs* funcargs, 
             }
         }
     }
-    if (*found){
+    if (*found) {
         return found_entry;
     }
     *found = false;
